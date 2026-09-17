@@ -1,0 +1,48 @@
+# Line endings, pinned explicitly.
+#
+# WHY THIS FILE EXISTS
+#   This repo is developed on Windows, where git's `core.autocrlf=true` is the
+#   usual setting. That stores LF in the repository and checks CRLF out into the
+#   working tree — which means the same file reads differently depending on who
+#   checked it out, and a one-line change can arrive as a whole-file diff.
+#
+#   `eol=lf` normalises everything to LF in both directions, so the repository
+#   and every working tree agree. Without this, the initial commit produced a
+#   CRLF warning on all 136 files, which is the churn starting.
+#
+# To fix an existing clone after this file lands:
+#   git rm --cached -r . && git reset --hard
+
+# Default: detect text, store and check out as LF.
+* text=auto eol=lf
+
+# Explicit for the file types that matter, so the intent survives a future
+# `* text=auto` being changed.
+*.js    text eol=lf
+*.mjs   text eol=lf
+*.ts    text eol=lf
+*.tsx   text eol=lf
+*.jsx   text eol=lf
+*.json  text eol=lf
+*.md    text eol=lf
+*.css   text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+
+# Windows-only scripts genuinely need CRLF, or cmd.exe misreads them.
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+
+# Never touch these — a converted line ending corrupts them.
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.webp  binary
+*.ico   binary
+*.woff  binary
+*.woff2 binary
+
+# Lockfiles are generated. Excluded from diffs and merge conflict resolution so
+# a regenerated lockfile does not produce an unreadable conflict.
+package-lock.json  -diff linguist-generated
