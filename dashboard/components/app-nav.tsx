@@ -1,0 +1,121 @@
+'use client';
+
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { FileText, LayoutGrid, Settings } from 'lucide-react';
+
+import { cn } from '@/lib/utils';
+
+/**
+ * The navigation model, defined once.
+ *
+ * Both the desktop sidebar and the mobile bottom bar render from this list, so
+ * adding a route cannot leave one of them behind. The icons are chosen for
+ * meaning rather than decoration: a grid for the workspace where things are
+ * produced, a page for the drafts they produced, a gear for configuration.
+ */
+const NAV_ITEMS = [
+  { href: '/workspace', label: 'Workspace', icon: LayoutGrid },
+  { href: '/drafts', label: 'Drafts', icon: FileText },
+  { href: '/settings', label: 'Settings', icon: Settings },
+] as const;
+
+/**
+ * Reports whether a nav item is the active one.
+ *
+ * Uses a prefix match so `/plans/abc123` still highlights "Workspace" — a
+ * nested route that belongs to a section should not leave the rail with nothing
+ * selected.
+ *
+ * @param pathname - The current path.
+ * @param href - The nav item's target.
+ * @returns True when the item should render as current.
+ * @sideeffect none (pure)
+ */
+function isActive(pathname: string, href: string): boolean {
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+/**
+ * Desktop sidebar navigation.
+ *
+ * A vertical list with a filled active state. The active item is marked with
+ * `aria-current="page"` as well as colour — colour alone would leave the
+ * current section invisible to anyone who cannot distinguish the tint.
+ *
+ * @returns The nav list.
+ * @sideeffect none
+ */
+export function SidebarNav() {
+  const pathname = usePathname();
+
+  return (
+    <nav aria-label="Main" className="flex flex-col gap-1">
+      {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+        const active = isActive(pathname, href);
+        return (
+          <Link
+            key={href}
+            href={href}
+            aria-current={active ? 'page' : undefined}
+            className={cn(
+              'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+              'focus-visible:outline-2 focus-visible:outline-offset-2',
+              active
+                ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                : 'text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-foreground',
+            )}
+          >
+            <Icon className="size-4 shrink-0" aria-hidden="true" />
+            {label}
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
+
+/**
+ * Mobile bottom navigation.
+ *
+ * Placed at the bottom rather than the top because the lower quarter of a phone
+ * screen is what a thumb reaches without adjusting grip. Three items across the
+ * full width also clears the 44px minimum touch target with room to spare.
+ *
+ * @returns The bottom bar.
+ * @sideeffect none
+ */
+export function BottomNav() {
+  const pathname = usePathname();
+
+  return (
+    <nav
+      aria-label="Main"
+      className="bg-background/95 border-border fixed inset-x-0 bottom-0 z-40 border-t backdrop-blur lg:hidden"
+      // Clears the home indicator on notched devices, so the last row is not
+      // sitting underneath it.
+      style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+    >
+      <ul className="grid grid-cols-3">
+        {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+          const active = isActive(pathname, href);
+          return (
+            <li key={href}>
+              <Link
+                href={href}
+                aria-current={active ? 'page' : undefined}
+                className={cn(
+                  'flex min-h-[56px] flex-col items-center justify-center gap-1 text-xs font-medium transition-colors',
+                  active ? 'text-primary' : 'text-muted-foreground',
+                )}
+              >
+                <Icon className="size-5" aria-hidden="true" />
+                {label}
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+    </nav>
+  );
+}

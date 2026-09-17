@@ -1,0 +1,22 @@
+# Secrets — never commit. Discord token, Mongo credentials and the AI key live here.
+.env
+
+# Generated post images (Phase 3 writes here; served statically at /media)
+media/
+
+node_modules/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Agent tooling state — settings and learned preferences for whatever assistant
+# is being used locally. Not project code, and settings.local.json is explicitly
+# machine-specific. Committed by mistake it would churn on every session.
+.commandcode/

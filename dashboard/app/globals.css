@@ -1,0 +1,271 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * BrandLoop design tokens.
+ *
+ * DIRECTION: warm paper and ink, one amber accent.
+ *
+ * The product turns a person's expertise into a written public voice, so the
+ * surface is a page rather than a dashboard chrome. Two decisions follow from
+ * that and explain every value below:
+ *
+ *   1. Nothing is neutral-grey. Every "grey" is tinted toward the accent hue at
+ *      a chroma well under 0.02 — enough to read as authored paper, far too
+ *      little to read as a colour. Untinted greys are what make product UI look
+ *      like an unstyled framework default.
+ *
+ *   2. The accent is deliberately not blue. Blue-violet is the reflex for
+ *      developer and SaaS tools and signals nothing about this one. Amber reads
+ *      as ink, marginalia and editorial marking, which is what this product is
+ *      about.
+ *
+ * All values are OKLCH so equal lightness steps look equal to the eye, and so
+ * the ramp can be reasoned about numerically instead of by trial.
+ */
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* Post lifecycle. Each is paired with a label in the UI — colour never
+     carries meaning alone. */
+  --color-status-pending: var(--status-pending);
+  --color-status-approved: var(--status-approved);
+  --color-status-rejected: var(--status-rejected);
+  --color-status-news: var(--status-news);
+
+  /* Platform identity, for the X and LinkedIn markers. */
+  --color-platform-x: var(--platform-x);
+  --color-platform-linkedin: var(--platform-linkedin);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  /* The drafts are prose meant to be read, so they get a reading face while
+     every control stays sans. This is the line between the interface and the
+     thing the interface produced. */
+  --font-serif: var(--font-source-serif);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+}
+
+:root {
+  /* Paper. Warm off-white — the page the work sits on. */
+  --background: oklch(0.985 0.006 85);
+  --foreground: oklch(0.22 0.012 75);
+
+  /* Surfaces lift by getting slightly brighter, not by casting shadow first.
+     A shadow on every panel is how a page turns into a pile of boxes. */
+  --card: oklch(0.995 0.004 85);
+  --card-foreground: oklch(0.22 0.012 75);
+  --popover: oklch(0.995 0.004 85);
+  --popover-foreground: oklch(0.22 0.012 75);
+
+  /* Amber. The only saturated colour in the system, which is what makes it
+     mean something when it appears. */
+  --primary: oklch(0.72 0.16 62);
+  --primary-foreground: oklch(0.20 0.02 70);
+
+  --secondary: oklch(0.955 0.008 85);
+  --secondary-foreground: oklch(0.30 0.012 78);
+
+  --muted: oklch(0.96 0.006 85);
+  --muted-foreground: oklch(0.55 0.010 80);
+
+  /* Hover wash — a warm tint rather than a grey shift, so hovering feels like
+     the page warming up rather than the element going dead. */
+  --accent: oklch(0.945 0.022 72);
+  --accent-foreground: oklch(0.28 0.015 75);
+
+  --destructive: oklch(0.55 0.19 27);
+  --destructive-foreground: oklch(0.99 0.005 85);
+
+  --border: oklch(0.90 0.008 85);
+  --input: oklch(0.89 0.010 85);
+
+  /* Focus ring is a DARKER amber than the button fill on purpose: a ring must
+     clear 3:1 against the surface it sits on, and the button amber does not
+     against paper. The button colour is tuned for text on top of it; the ring
+     colour is tuned for itself against the page. Different jobs, different
+     lightness. */
+  --ring: oklch(0.58 0.15 60);
+
+  --status-pending: oklch(0.62 0.05 80);
+  --status-approved: oklch(0.52 0.13 152);
+  --status-rejected: oklch(0.55 0.19 27);
+  --status-news: oklch(0.60 0.14 55);
+
+  --platform-x: oklch(0.25 0.01 75);
+  --platform-linkedin: oklch(0.48 0.13 250);
+
+  --radius: 0.5rem;
+
+  --sidebar: oklch(0.975 0.006 85);
+  --sidebar-foreground: oklch(0.30 0.012 78);
+  --sidebar-primary: oklch(0.72 0.16 62);
+  --sidebar-primary-foreground: oklch(0.20 0.02 70);
+  --sidebar-accent: oklch(0.94 0.020 72);
+  --sidebar-accent-foreground: oklch(0.24 0.015 75);
+  --sidebar-border: oklch(0.90 0.008 85);
+  --sidebar-ring: oklch(0.58 0.15 60);
+}
+
+.dark {
+  /* Warm dark, not blue-black. A near-black with the same slight amber lean as
+     the light theme, so the product has one identity rather than two. */
+  --background: oklch(0.19 0.008 75);
+  --foreground: oklch(0.94 0.008 85);
+
+  --card: oklch(0.225 0.008 75);
+  --card-foreground: oklch(0.94 0.008 85);
+  --popover: oklch(0.235 0.008 75);
+  --popover-foreground: oklch(0.94 0.008 85);
+
+  /* Lifted in lightness because light-on-dark reads optically thinner — the
+     same amber as the light theme would look muddy here. */
+  --primary: oklch(0.78 0.15 65);
+  --primary-foreground: oklch(0.18 0.02 70);
+
+  --secondary: oklch(0.27 0.008 75);
+  --secondary-foreground: oklch(0.92 0.008 85);
+
+  --muted: oklch(0.26 0.008 75);
+  --muted-foreground: oklch(0.68 0.010 80);
+
+  --accent: oklch(0.30 0.020 70);
+  --accent-foreground: oklch(0.94 0.008 85);
+
+  --destructive: oklch(0.62 0.19 27);
+  --destructive-foreground: oklch(0.98 0.005 85);
+
+  --border: oklch(1 0 0 / 12%);
+  --input: oklch(1 0 0 / 16%);
+
+  --ring: oklch(0.72 0.15 62);
+
+  --status-pending: oklch(0.68 0.04 80);
+  --status-approved: oklch(0.70 0.14 152);
+  --status-rejected: oklch(0.68 0.18 27);
+  --status-news: oklch(0.76 0.13 58);
+
+  --platform-x: oklch(0.92 0.008 85);
+  --platform-linkedin: oklch(0.68 0.12 250);
+
+  --sidebar: oklch(0.215 0.008 75);
+  --sidebar-foreground: oklch(0.90 0.008 85);
+  --sidebar-primary: oklch(0.78 0.15 65);
+  --sidebar-primary-foreground: oklch(0.18 0.02 70);
+  --sidebar-accent: oklch(0.28 0.018 72);
+  --sidebar-accent-foreground: oklch(0.94 0.008 85);
+  --sidebar-border: oklch(1 0 0 / 12%);
+  --sidebar-ring: oklch(0.72 0.15 62);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  html {
+    @apply font-sans;
+    /* Keeps the page from shifting when a short page and a long page both
+       exist — the scrollbar is reserved on every route. */
+    scrollbar-gutter: stable;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    /* Slightly tighter than default so dense surfaces (the plan rail, the
+       draft list) do not run long. */
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Focus is never removed, only restyled. The offset is what makes a ring
+     legible on top of a filled button. */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+  }
+}
+
+@layer utilities {
+  /*
+   * The reading measure for generated drafts.
+   *
+   * 68ch sits inside the 60-76ch band that keeps the eye from losing its place
+   * on the return sweep. Applied to the artifact only — never to UI chrome,
+   * where narrow columns would break scanning.
+   */
+  .measure-draft {
+    max-width: 68ch;
+  }
+
+  /*
+   * Post body typography.
+   *
+   * Drafts are prose, so they get the serif and a taller line-height than the
+   * interface around them. Applied as a class rather than per-component so
+   * every place a draft appears looks identical.
+   */
+  .prose-draft {
+    font-family: var(--font-serif), Georgia, serif;
+    line-height: 1.65;
+    /* Preserves the blank-line paragraph breaks the generator emits, which are
+       meaningful on both target platforms. */
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+}
+
+/*
+ * Motion is opt-in, never assumed.
+ *
+ * The generator runs can take 30-60s, so there is real waiting in this product
+ * and animation is used to signal state change rather than to decorate. Anyone
+ * who has asked their OS to reduce motion gets a static interface, not a
+ * slower one.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

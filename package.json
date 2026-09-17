@@ -1,0 +1,36 @@
+{
+  "name": "brandloop",
+  "version": "1.0.0",
+  "description": "personal branding & social media automation agent saas product",
+  "license": "ISC",
+  "author": "ali khan",
+  "type": "module",
+  "main": "src/index.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js",
+    "probe": "node scripts/probe.js",
+    "seed": "node scripts/seed.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@google/genai": "^2.22.0",
+    "bcrypt": "^6.0.0",
+    "discord.js": "^14.27.0",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "fast-xml-parser": "^5.11.1",
+    "jsonwebtoken": "^9.0.3",
+    "mongodb": "^7.6.0",
+    "mongoose": "^9.10.1",
+    "node-cron": "^4.6.0",
+    "openai": "^7.15.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
+  }
+}
