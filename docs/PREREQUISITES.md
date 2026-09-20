@@ -131,7 +131,7 @@ Rules: **uppercase name**, no quotes around the value, no trailing spaces, nothi
 Shape it must match:
 
 ```
-MONGODB_URI=mongodb+srv://brandloop-admin:YOUR_PASSWORD@cluster0.xxxxx.mongodb.net/brandloop?retryWrites=true&w=majority
+MONGODB_URI=mongodb+srv://<user>:<password>@cluster0.xxxxx.mongodb.net/brandloop?retryWrites=true&w=majority
 ```
 
 Three things that break this string, in order of frequency:
@@ -178,7 +178,7 @@ Your `.env` should end up looking like this (values replaced with your real ones
 ```bash
 # ── Required ───────────────────────────────────────────────
 OPENAI_API_KEY=sk-proj-...
-MONGODB_URI=mongodb+srv://brandloop-admin:...@cluster0.xxxxx.mongodb.net/brandloop?retryWrites=true&w=majority
+MONGODB_URI=mongodb+srv://<user>:<password>@cluster0.xxxxx.mongodb.net/brandloop?retryWrites=true&w=majority
 DISCORD_BOT_TOKEN=...
 DISCORD_APP_ID=...
 JWT_SECRET=...
