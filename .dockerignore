@@ -33,6 +33,7 @@ slide.md
 .git
 .gitignore
 .gitattributes
+.github
 .commandcode
 sdkprobe
 

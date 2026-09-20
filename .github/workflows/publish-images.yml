@@ -1,0 +1,130 @@
+# Build both images and publish them to the GitHub Container Registry.
+#
+# RESPONSIBILITY
+#   Turn a push to main into two pullable images, so sharing the app becomes
+#   `docker pull ghcr.io/alikhan84/brandloop-api` rather than "clone this repo and
+#   build it for four minutes".
+#
+# WHY GHCR RATHER THAN DOCKER HUB
+#   This workflow authenticates with its own `GITHUB_TOKEN`, so no long-lived
+#   registry credential exists anywhere in the repository or its settings. That
+#   is the whole advantage: a CI push with no new secret to leak, rotate or
+#   forget. Docker Hub needs an account token stored as a repository secret
+#   (DOCKERHUB_USERNAME / DOCKERHUB_TOKEN) and applies pull-rate limits to free
+#   accounts — worth adding only if someone consuming the image expects to pull
+#   it from Docker Hub by name. Adding it is a login step and two more
+#   build-push-action inputs.
+#
+# WHY TWO BUILD STEPS RATHER THAN A MATRIX
+#   The API and the dashboard are separate applications with separate Dockerfiles
+#   and different build arguments (AGENTS.md §1 — two processes, two ports). A
+#   matrix would hide that difference behind conditionals to save six lines;
+#   written out, the file reads the same way the repository is organised.
+#
+# PLATFORMS
+#   linux/amd64 only. Add linux/arm64 below if you deploy on Oracle's free ARM
+#   tier or an M-series Mac — but be aware the Next.js build then runs under
+#   emulation and takes several times longer. On an ARM host,
+#   `docker compose up -d --build` builds natively and needs no registry at all.
+#
+# PACKAGE VISIBILITY
+#   A new package is **private**, even for a public repository. To let anyone
+#   pull without signing in, set its visibility to public under the repository's
+#   Packages tab after the first successful run.
+
+name: Publish images
+
+on:
+  push:
+    branches: [main]
+  # Manual runs, so an image can be rebuilt without an empty commit.
+  workflow_dispatch:
+
+# One in-flight run per branch. A superseded run is cancelled rather than
+# finishing the job of publishing an image for a commit that is already stale.
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  # The only reason this workflow can push at all.
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    # Bounds a hung build rather than leaving it running to the six-hour default.
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v5
+
+      # An owner login can contain capitals — this account is `AliKhan84` — and
+      # an OCI image reference cannot. Pushing `ghcr.io/AliKhan84/...` is
+      # rejected as an invalid reference, so the name is lowercased once here
+      # and used by both images below.
+      - name: Lowercase the repository owner
+        run: echo "OWNER=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_ENV"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          # The workflow's own token. Nothing to configure, nothing to rotate.
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── API: Express + the Discord gateway + the scheduler ────────────────
+      - name: API image tags
+        id: api
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ env.OWNER }}/brandloop-api
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=short
+
+      - name: Build and push the API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.api.outputs.tags }}
+          labels: ${{ steps.api.outputs.labels }}
+          # Layer cache in the Actions cache, keyed per image so the two builds
+          # do not evict each other. Without it every run reinstalls 171 packages
+          # and recompiles bcrypt.
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+
+      # ── Dashboard: the Next.js standalone server ─────────────────────────
+      - name: Dashboard image tags
+        id: dashboard
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ env.OWNER }}/brandloop-dashboard
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=short
+
+      - name: Build and push the dashboard image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./dashboard
+          platforms: linux/amd64
+          push: true
+          # Next inlines NEXT_PUBLIC_* during `next build`, so this has to be
+          # present at build time — setting it at run time leaves the "Add to
+          # Discord" button with an empty href. Set it under Settings → Secrets
+          # and variables → Actions → Variables; leaving it unset is valid and
+          # simply ships the button without a link.
+          build-args: |
+            NEXT_PUBLIC_DISCORD_INSTALL_URL=${{ vars.NEXT_PUBLIC_DISCORD_INSTALL_URL }}
+          tags: ${{ steps.dashboard.outputs.tags }}
+          labels: ${{ steps.dashboard.outputs.labels }}
+          cache-from: type=gha,scope=dashboard
+          cache-to: type=gha,mode=max,scope=dashboard

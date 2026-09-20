@@ -25,6 +25,11 @@
 
 services:
   api:
+    # Named for the published image, so a machine that only needs to run the app
+    # can `docker compose pull` and skip the build entirely. With both keys
+    # present compose uses a local image when there is one and builds when there
+    # is not; `--build` forces a rebuild from this checkout.
+    image: ghcr.io/alikhan84/brandloop-api:latest
     build:
       context: .
     # Every credential — MONGODB_URI, DISCORD_BOT_TOKEN, DISCORD_APP_ID,
@@ -61,6 +66,7 @@ services:
     restart: unless-stopped
 
   dashboard:
+    image: ghcr.io/alikhan84/brandloop-dashboard:latest
     build:
       context: ./dashboard
       args:

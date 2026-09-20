@@ -95,6 +95,7 @@ Only worth it if you want a managed dashboard. The dashboard needs
 
 ```bash
 docker compose up -d --build          # start both, wait for healthchecks
+docker compose pull                   # fetch the published images instead of building
 docker compose ps                     # health and published ports
 docker compose logs -f api            # follow the bot: gateway, DB, scheduler
 docker compose run --rm api npm run seed     # demo account and fixture data
@@ -105,6 +106,39 @@ docker compose down -v                # stop and delete the volume as well
 
 `docker compose up -d --wait` is what the verification used: it blocks until both
 containers report healthy instead of returning the moment they start.
+
+### Pulling the published images
+
+`.github/workflows/publish-images.yml` builds and pushes both images to GHCR on
+every push to `main`, so a machine that only needs to *run* the app never has to
+build it:
+
+```bash
+docker compose pull          # both images, using the names in docker-compose.yml
+```
+
+The two images are also pullable by hand:
+
+```bash
+docker pull ghcr.io/alikhan84/brandloop-api:latest
+docker pull ghcr.io/alikhan84/brandloop-dashboard:latest
+```
+
+**GHCR rather than Docker Hub, and why.** The workflow authenticates with its own
+`GITHUB_TOKEN`, so there is no long-lived registry credential stored in the
+repository — nothing extra to leak, rotate or forget. Docker Hub would need an
+account token kept as a repository secret, and it applies pull-rate limits to
+free accounts. Add it only if whoever consumes the image expects to pull it from
+Docker Hub by name; it costs a login step and two extra `build-push-action`
+inputs, and the two registries can coexist without changing anything else.
+
+Two things to know about the published images:
+
+- **A new package is private, even though the repository is public.** To let
+  anyone pull without signing in, set its visibility to public under the
+  repository's Packages tab after the first successful run.
+- **They are `linux/amd64` only.** On an ARM host — Oracle's free tier, an
+  M-series Mac — use `docker compose up -d --build`, which builds natively.
 
 ### Configuration
 

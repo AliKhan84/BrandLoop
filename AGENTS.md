@@ -146,7 +146,10 @@ Next.js standalone server, and `docker-compose.yml` runs both with a volume for
 healthchecks; verified end to end at 85 MB and 48 MB resident. Docker is an
 *option* beside the PRD's PM2 + Nginx plan, not a replacement — and
 `docs/DEPLOYMENT.md` records why a host that suspends idle containers cannot run
-this one at all: the gateway drops and the cron job dies with no error.
+this one at all: the gateway drops and the cron job dies with no error. A push to
+`main` publishes both images to GHCR
+(`.github/workflows/publish-images.yml`), so a machine that only runs the app can
+`docker compose pull` instead of building it.
 
 ### Remaining
 
