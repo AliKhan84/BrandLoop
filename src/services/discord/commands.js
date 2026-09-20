@@ -96,9 +96,19 @@ export async function registerCommands(client) {
     // Global: available everywhere, but may take up to an hour to appear.
     await client.application.commands.set(COMMANDS);
 
-    const guilds = await client.guilds.fetch();
     // Guild-scoped: instant. This is what makes the commands usable in a demo
     // without waiting for global propagation.
+    //
+    // Iterated from the CACHE rather than `client.guilds.fetch()`. That call
+    // returns `OAuth2Guild` objects — a partial representation built from
+    // `GET /users/@me/guilds` — and those have no `commands` manager, so
+    // `guild.commands.set` threw "Cannot read properties of undefined (reading
+    // 'set')" for every guild. The throw was swallowed by the per-guild catch in
+    // `registerCommandsInGuild`, so the run still logged "global + 1 guild(s)"
+    // while no guild had a single command registered. The cache holds real
+    // `Guild` objects and is complete by the time `clientReady` fires, which is
+    // the only caller of this function.
+    const guilds = client.guilds.cache;
     for (const guild of guilds.values()) {
       await registerCommandsInGuild(guild);
     }

@@ -286,6 +286,17 @@ instead of asking for a sign-in. `bufferCommands: false` in `db/connect.js` is
 part of the fix: without it the query waits out the driver's buffer timeout
 first, turning a blip into a ten-second hang.
 
+**6.11 `client.guilds.fetch()` returns `OAuth2Guild` objects, which have no
+`commands` manager.** Registering slash commands by iterating that result threw
+"Cannot read properties of undefined (reading 'set')" for every guild, and the
+per-guild `catch` in `registerCommandsInGuild` swallowed it — so the run still
+logged "global + 1 guild(s)" while no guild had a single command. The only trace
+was a warning that reads like a permissions problem, and the failure mode is
+quiet: the commands still work once global registration propagates, so it looks
+like nothing is wrong. Iterate `client.guilds.cache` instead; it holds real
+`Guild` objects and is complete by `clientReady`. Any other place that reaches
+for the API to enumerate guilds has the same trap.
+
 ---
 
 ## 7. Running it
