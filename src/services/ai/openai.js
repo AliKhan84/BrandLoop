@@ -1,16 +1,21 @@
 /**
- * OpenAI provider — the deferred swap target.
+ * OpenAI provider — the active provider.
  *
- * ## STATUS: implemented against current documentation, NOT yet verified
+ * ## STATUS: live (see plan amendment §0.5)
  *
- * There is no OpenAI key on this machine, so this file has never been executed.
- * It is written now so the switch is a config change rather than a rewrite, and
- * it is deliberately kept to the same three functions as the Gemini provider.
+ * This file was written before the OpenAI key existed, as the swap target for
+ * the Gemini implementation. The switch has since happened — `AI_PROVIDER=openai`,
+ * `TEXT_MODEL=gpt-5.1`, `IMAGE_MODEL=gpt-image-1` — and every function here has
+ * been executed against the live API, including `generateImage`.
  *
- * **Before switching `AI_PROVIDER=openai`, run `npm run probe`.** The probe
- * calls `describeModel` against the real API, which is what validates this
- * file. Do not assume it works because it looks plausible — that is exactly the
- * failure mode this note exists to prevent.
+ * It is deliberately kept to the same four functions as the Gemini provider,
+ * because that narrow surface is what makes a provider change a config edit
+ * rather than a rewrite.
+ *
+ * **Before switching `AI_PROVIDER`, run `npm run probe`.** The probe calls
+ * `describeModel` against the real API, which is what validates the key and the
+ * model names. Do not assume a provider works because it looks plausible — that
+ * is exactly the failure mode A10 in the plan came from.
  *
  * ## Shape differences from Gemini (why this is not a copy-paste)
  *
@@ -293,6 +298,89 @@ export async function generateText({
 }
 
 /**
+ * Generates one image and returns its bytes.
+ *
+ * ## Why there is no retry here
+ *
+ * `callWithRetry` exists for text calls, where an attempt costs a fraction of a
+ * cent. An image costs ~$0.04 and ~16 seconds measured on this key, so retrying
+ * is a real expense for an outcome that rarely changes: a refusal is
+ * deterministic, and a timeout is bounded by `AI_REQUEST_TIMEOUT_MS` rather
+ * than by the number of attempts. The caller degrades the post to text-only
+ * instead — cheap, immediate, and visible to the user.
+ *
+ * @param {object} params
+ * @param {string} params.prompt - The full image prompt.
+ * @param {string|null} [params.size] - `"<width>x<height>"`, from `IMAGE_SIZES`.
+ *   Omitted when the platform has no configured size, because an unrecognised
+ *   dimension is a 400 rather than a fallback to the model's default.
+ * @param {string} [params.model] - Model id; defaults to `env.IMAGE_MODEL`.
+ * @param {string} [params.quality='medium'] - Provider quality tier. Medium is
+ *   the compromise for an image that accompanies a post; high costs roughly
+ *   four times as much.
+ * @param {string} [params.label='generateImage'] - Name used in logs.
+ * @returns {Promise<{buffer: Buffer, mimeType: string, model: string,
+ *   usage: object, durationMs: number, requestId: string|null}>} The image
+ *   bytes and what it cost.
+ * @throws {import('../../utils/ApiError.js').ApiError} When the call fails or
+ *   comes back without bytes.
+ * @sideeffect Makes a network request.
+ */
+export async function generateImage({
+  prompt,
+  size = null,
+  model = env.IMAGE_MODEL,
+  quality = 'medium',
+  label = 'generateImage',
+}) {
+  const startedAt = Date.now();
+
+  const response = await client.images.generate(
+    {
+      model,
+      prompt,
+      ...(size ? { size } : {}),
+      quality,
+      // JPEG: the output is an image for a social post, and PNG's extra size
+      // buys nothing here.
+      output_format: 'jpeg',
+      n: 1,
+    },
+    // The same ceiling as text calls — the API documents that image generation
+    // can take up to two minutes, so a tighter timeout would abort work that
+    // would have succeeded.
+    { timeout: AI_REQUEST_TIMEOUT_MS },
+  );
+
+  const base64 = response.data?.[0]?.b64_json;
+
+  if (!base64) {
+    // An empty success is still a failure: without the bytes there is nothing
+    // to write, and returning undefined here surfaces three layers up as a
+    // confusing "cannot read property of undefined".
+    const { ApiError } = await import('../../utils/ApiError.js');
+    throw ApiError.upstream(`Empty image response from ${model}`);
+  }
+
+  logger.debug(
+    `${label}: ${model} returned ${Math.round(base64.length / 1024)}KB of base64 ` +
+      `in ${Date.now() - startedAt}ms`,
+  );
+
+  return {
+    buffer: Buffer.from(base64, 'base64'),
+    mimeType: 'image/jpeg',
+    model,
+    durationMs: Date.now() - startedAt,
+    usage: {
+      inputTokens: response.usage?.input_tokens ?? null,
+      outputTokens: response.usage?.output_tokens ?? null,
+    },
+    requestId: response._request_id ?? null,
+  };
+}
+
+/**
  * Checks whether a model id is callable with the configured key.
  *
  * @param {string} model - The model id to test.
@@ -372,4 +460,11 @@ export async function describeImageModel(model) {
   }
 }
 
-export default { generateStructured, generateText, describeModel, describeImageModel, providerName };
+export default {
+  generateStructured,
+  generateText,
+  generateImage,
+  describeModel,
+  describeImageModel,
+  providerName,
+};

@@ -11,12 +11,13 @@
  *   both would need two copies of every state field and would make "approve"
  *   ambiguous.
  *
- * WHY THE PHASE 3 FIELDS EXIST NOW
- *   `needsImage`, `imagePrompt`, `imageUrl` and `imageGeneratedAt` are inert in
- *   this build (image generation is deferred — see the plan's amendment A3),
- *   but they are created here so enabling Phase 3 later is additive. Adding
- *   fields to a populated collection afterwards means a migration; adding them
- *   now costs nothing.
+ * WHY THE IMAGE FIELDS WERE ADDED BEFORE THEY WERE USED
+ *   `needsImage`, `imagePrompt`, `imageUrl` and `imageGeneratedAt` were created
+ *   while image generation was still deferred (plan amendment A3), so that
+ *   enabling Phase 3 later would be additive rather than a migration. That is
+ *   exactly how it landed: `imageGenerator` populates them and no data change
+ *   was needed. `imageSkipReason` was added with the feature, to explain a
+ *   missing image after a message re-render.
  *
  * DOES NOT OWN: scheduling (that is the slot's job) or delivery to Discord.
  */
@@ -114,6 +115,16 @@ const postSchema = new Schema(
     imageUrl: { type: String, default: null },
     /** When the image was generated. Null when there is none. */
     imageGeneratedAt: { type: Date, default: null },
+    /**
+     * Why a requested image is missing, when one was wanted but not produced.
+     *
+     * Null when no image was requested, or when one was generated. Stored
+     * rather than merely logged because the approval message is rebuilt from
+     * this document every time it is refreshed — a note held only in memory
+     * would disappear on the next edit, leaving a draft that asked for an image
+     * and shows none with no explanation.
+     */
+    imageSkipReason: { type: String, default: null },
 
     // ── Lifecycle ───────────────────────────────────────────────────────────
     /**
@@ -279,6 +290,7 @@ postSchema.methods.toPublicJSON = function toPublicJSON() {
     // Phase 3 fields are exposed now so the API shape does not change later.
     needsImage: this.needsImage,
     imageUrl: this.imageUrl,
+    imageSkipReason: this.imageSkipReason,
     regenerationCount: this.regenerationCount,
     publishedAt: this.publishedAt,
     createdAt: this.createdAt,

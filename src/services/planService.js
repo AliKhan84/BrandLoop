@@ -18,6 +18,9 @@
  *   3. Persist the `Post` BEFORE sending it. If the DM fails the post still
  *      exists, so it can be re-delivered rather than regenerated — which would
  *      cost another API call for a post that was already written.
+ *   4. Generate the image AFTER the text is persisted and BEFORE the DM. The
+ *      image is an enhancement, so a failure there must not be able to lose a
+ *      draft that is already written; it degrades to text-only with a note.
  *
  * ## Failure posture
  *
@@ -34,6 +37,7 @@ import { ContentPlan } from '../models/ContentPlan.js';
 import { Post } from '../models/Post.js';
 import { generateContentPlan } from './ai/planGenerator.js';
 import { generatePost, resolveNewsStory } from './ai/postGenerator.js';
+import { generateImageForPost, IMAGE_SKIP_NOTES } from './ai/imageGenerator.js';
 import { consume } from './quotaService.js';
 import { logGeneration, GENERATION_KIND } from './usageLogger.js';
 import { queuePostForApproval, refreshApprovalMessage } from './discord/approvalQueue.js';
@@ -267,6 +271,15 @@ export async function generateSlot({ user, plan, slot, force = false }) {
       // text that was already written.
       await post.save();
 
+      // Phase 3 — the image, when the text model asked for one. Deliberately
+      // between persistence and delivery: the draft is already safe, so a
+      // refused or failed image costs the user the illustration and nothing
+      // else, and the note on the post explains it in the message.
+      if (post.needsImage && post.imagePrompt) {
+        await attachImage({ post, user, skipped });
+        await post.save();
+      }
+
       const delivery = await queuePostForApproval(post, user);
       if (!delivery.sent) {
         skipped.push(`${platform}: generated but not delivered (${delivery.reason})`);
@@ -302,6 +315,103 @@ export async function generateSlot({ user, plan, slot, force = false }) {
   await plan.save();
 
   return { generated, skipped };
+}
+
+/**
+ * Generates a post's image, degrading to text-only on any failure.
+ *
+ * ## Why this never throws
+ *
+ * The draft is already written and saved by the time this runs, so an image
+ * failure can only cost the illustration. Every path here ends with the post
+ * still queueable: the reason is stored on the post — which is what the
+ * approval message renders from — and appended to the slot's skip list, so a
+ * slot that keeps missing its image stays explained long after the toast has
+ * gone.
+ *
+ * ## Why there is no retry
+ *
+ * One image costs ~$0.04 and ~16s, the most expensive call in the pipeline, so
+ * a retry loop is exactly the cost risk the weekly quota exists to prevent.
+ * See the note in `imageGenerator`.
+ *
+ * @param {object} params
+ * @param {object} params.post - The saved post to illustrate. Mutated with the
+ *   image URL or the skip note; the caller owns the `save()`.
+ * @param {object} params.user - The owning user, for the niche line.
+ * @param {string[]} [params.skipped=[]] - The slot's skip list, appended to in
+ *   place when the caller has one. A regenerate has no slot list to update, so
+ *   there the note on the post is the only record — which is the surface the
+ *   message renders from anyway.
+ * @returns {Promise<void>}
+ * @sideeffect Calls the image API, writes a file, mutates the post.
+ */
+async function attachImage({ post, user, skipped = [] }) {
+  // Lowercase, matching the other entries in the slot's skip list so the stored
+  // reason reads as one sentence rather than two naming conventions.
+  const platform = post.platform;
+
+  // Consumed BEFORE the paid call, like every other metered operation — a
+  // failure after consuming must not still bill for nothing, and a crash
+  // between the call and the increment must not hand out free work. A refusal
+  // here means no request was made, so it is noted on the post but not written
+  // to `GenerationLog`: there is no AI call to record.
+  try {
+    await consume({ userId: user._id, key: QUOTA_KEY.IMAGES });
+  } catch {
+    logger.warn(
+      `generateSlot: weekly image quota spent for user ${user._id} — ` +
+        `post ${post._id} queued text-only`,
+    );
+    post.imageSkipReason = IMAGE_SKIP_NOTES.quota;
+    skipped.push(`${platform}: image quota exhausted — queued text-only`);
+    return;
+  }
+
+  const started = Date.now();
+
+  try {
+    const image = await generateImageForPost({ post, user });
+
+    await logGeneration({
+      kind: GENERATION_KIND.IMAGE,
+      userId: user._id,
+      result: image,
+      durationMs: image.durationMs,
+      meta: {
+        planId: post.planId,
+        dayIndex: post.dayIndex,
+        platform: post.platform,
+        bytes: image.bytes,
+      },
+    });
+
+    logger.info(`Generated image for post ${post._id} (${image.bytes} bytes in ${image.durationMs}ms)`);
+  } catch (err) {
+    // The provider detail — moderation categories, the upstream status — was
+    // logged by `imageGenerator`. The user gets the fixed note for the reason.
+    const reason = err.details?.reason ?? 'failed';
+    post.imageSkipReason = IMAGE_SKIP_NOTES[reason] ?? IMAGE_SKIP_NOTES.failed;
+
+    logger.error(`generateSlot: image ${reason} for post ${post._id} — queued text-only`);
+    skipped.push(`${platform}: image ${reason} — queued text-only`);
+
+    // Attempted calls are recorded even when they failed, for the same reason
+    // the post path does it: a provider refusing half the requests must not
+    // look identical to one that is working.
+    await logGeneration({
+      kind: GENERATION_KIND.IMAGE,
+      userId: user._id,
+      error: err,
+      durationMs: Date.now() - started,
+      meta: {
+        planId: post.planId,
+        dayIndex: post.dayIndex,
+        platform: post.platform,
+        reason,
+      },
+    });
+  }
 }
 
 /**
@@ -444,6 +554,15 @@ export async function regeneratePost({ post, user }) {
     });
 
     await replacement.save();
+
+    // The replacement gets the same treatment as a first draft: rejecting the
+    // writing is not a decision about the artwork. Repeated rejections cannot
+    // run away with cost — the weekly image quota is the bound.
+    if (replacement.needsImage && replacement.imagePrompt) {
+      await attachImage({ post: replacement, user });
+      await replacement.save();
+    }
+
     await queuePostForApproval(replacement, user);
 
     return { post: replacement };

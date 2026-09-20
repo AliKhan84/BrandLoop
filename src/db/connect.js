@@ -18,6 +18,12 @@
  *   connection. Failing immediately would mean a scheduled job dies because
  *   the database was briefly waking up. Backoff turns that into a short pause.
  *
+ * WHY THE CONNECTION CAN BE GONE *AFTER* A SUCCESSFUL START
+ *   Losing the network — a laptop sleeping, a cluster waking up — leaves the
+ *   driver reconnecting while HTTP keeps serving. Queries fail in that window,
+ *   which is why `isDatabaseConnected` exists and why `errorHandler` answers
+ *   503 rather than 500: it is an outage, not a defect.
+ *
  * DOES NOT OWN: model definitions, or deciding what to do when the database is
  * unreachable — `src/index.js` owns the startup decision to abort.
  */
@@ -93,6 +99,13 @@ export async function connectDatabase({ retries = 5, baseDelayMs = 1000 } = {}) 
         // Give up on a single attempt after 10s rather than hanging on a
         // blocked network, so the retry loop can actually advance.
         serverSelectionTimeoutMS: 10_000,
+        // WHY NO BUFFERING: by default a query issued while the connection is
+        // down waits for the driver's default buffer timeout, *then* throws —
+        // so an Atlas blip turns a request into a ten-second hang followed by a
+        // 500. Failing immediately lets `errorHandler` answer 503 while the
+        // driver reconnects in the background, which is both faster and true:
+        // the request cannot be served, and retrying will work.
+        bufferCommands: false,
       });
 
       return mongoose;

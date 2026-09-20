@@ -19,10 +19,23 @@
  *   wrapper; that is no longer the case here, which is why no route in this
  *   codebase has one.
  *
+ * WHY A DISCONNECTED DATABASE IS NOT A 500
+ *   Every authenticated route needs Mongo — `requireAuth` re-reads the user on
+ *   each request — so a connection lost at runtime (a sleeping laptop, a waking
+ *   Atlas cluster) fails requests that are perfectly valid. Reporting that as
+ *   500 says "this code is broken" to both the log reader and the client, when
+ *   the truth is "this will work again in a moment". 503 says the second thing,
+ *   and it is the difference between a user retrying and a user filing a bug.
+ *
+ *   `ApiError`s keep their own statuses regardless: an expired session must
+ *   still answer 401 while the database is down, or the dashboard would treat a
+ *   dead session as an outage and never ask the user to sign in again.
+ *
  * DOES NOT OWN: deciding what counts as an error, or retry logic.
  */
 
 import { env } from '../config/env.js';
+import { isDatabaseConnected } from '../db/connect.js';
 import { ApiError } from '../utils/ApiError.js';
 import { logger, safeString } from '../utils/logger.js';
 
@@ -55,7 +68,12 @@ export function notFoundHandler(req, res, next) {
  */
 export function errorHandler(err, req, res, next) { // eslint-disable-line no-unused-vars
   const isApiError = err instanceof ApiError;
-  const statusCode = isApiError ? err.statusCode : 500;
+
+  // Checked before the status is decided, because it changes both the response
+  // and how the failure should be logged.
+  const databaseDown = !isApiError && !isDatabaseConnected();
+
+  const statusCode = isApiError ? err.statusCode : databaseDown ? 503 : 500;
 
   // Deliberate failures are logged at warn — they are expected and do not need
   // a stack trace. Anything else is a bug and gets the full treatment.
@@ -75,6 +93,18 @@ export function errorHandler(err, req, res, next) { // eslint-disable-line no-un
 
   if (isApiError) {
     return res.status(statusCode).json(err.toJSON(!env.isProduction));
+  }
+
+  if (databaseDown) {
+    // Tells a client (or a proxy) that the same request is worth repeating,
+    // which is exactly the case here.
+    res.set('Retry-After', '5');
+
+    return res.status(503).json({
+      error: 'DatabaseUnavailable',
+      message:
+        'BrandLoop cannot reach its database right now. This is usually brief, and nothing was changed — try again in a moment.',
+    });
   }
 
   return res.status(500).json({

@@ -23,7 +23,8 @@
  */
 
 import { AttachmentBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
-import { env } from '../../config/env.js';
+import { existsSync } from 'node:fs';
+
 import { logger } from '../../utils/logger.js';
 import { openDirectMessage } from './client.js';
 import {
@@ -33,7 +34,8 @@ import {
   PLATFORM_LIMITS,
   POST_TYPE,
 } from '../../config/constants.js';
-import { buildCopyBlock, buildThreadCopyBlocks } from '../../utils/urlBuilder.js';
+import { buildCopyBlock, buildMediaUrl, buildThreadCopyBlocks } from '../../utils/urlBuilder.js';
+import { imageFilenameFor, imageFilePathFor } from '../ai/imageGenerator.js';
 import { describeLength } from '../../utils/text.js';
 import { DISCORD_CONTENT_LIMIT, DISCORD_EMBED_DESCRIPTION_LIMIT, POST_STATUS } from '../../config/constants.js';
 
@@ -143,8 +145,14 @@ export function buildApprovalEmbed(post, user = null, overflowText = null) {
   }
 
   if (post.imageUrl) {
-    // Phase 3 — unreachable in this build, kept so enabling it needs no change.
+    // The public URL, so the preview resolves wherever the API is reachable
+    // from Discord's servers. The same file is attached to the message — which
+    // is what makes the image visible when the API is only on localhost.
     embed.setImage(post.imageUrl);
+  } else if (post.needsImage && post.imageSkipReason) {
+    // A draft that asked for an image and has none would otherwise read as a
+    // broken feature rather than a degraded one. The note says which it is.
+    embed.addFields({ name: 'Image', value: post.imageSkipReason });
   }
 
   return embed;
@@ -229,6 +237,23 @@ export function buildApprovalPayload(post, user = null) {
   // the posts that cannot have it.
   const fitsInContent = bodyBlock.length <= DISCORD_CONTENT_LIMIT;
 
+  // The generated image, when there is one and the file is still on disk.
+  //
+  // The filename comes from `imageGenerator` rather than being spelled out
+  // here, so the module that writes the file also owns where it lives. The
+  // existence check is not paranoia: a post outlives its media directory — a
+  // fresh clone has none of the files, and `redeliver-posts.mjs` deliberately
+  // runs against posts generated weeks earlier.
+  //
+  // EVERY render re-uploads the file, including an in-place edit. Discord does
+  // not preserve a message's attachments across an edit — verified live:
+  // re-rendering without the file left the image message with no attachment at
+  // all. Omitting it here would look like an optimisation and would silently
+  // strip the image from the draft on the next text edit.
+  const imageFilename = post.imageUrl ? imageFilenameFor(post._id) : null;
+  const imagePath = imageFilename ? imageFilePathFor(post._id) : null;
+  const imageToAttach = imagePath && existsSync(imagePath) ? imagePath : null;
+
   const payload = {
     // The copy block. This is the feature — see the module note on why it sits
     // in content rather than in the embed.
@@ -237,13 +262,18 @@ export function buildApprovalPayload(post, user = null) {
     // Buttons are omitted once the post has been actioned, so an old message
     // cannot be approved a second time.
     components: isActionable ? [buildApprovalButtons(post._id.toString())] : [],
-    files: [],
+    // The file rides along with the message, so the image is usable even when
+    // the API's public URL is not reachable from Discord (local dev).
+    files: imageToAttach
+      ? [new AttachmentBuilder(imageToAttach, { name: imageFilename })]
+      : [],
   };
 
   if (post.imageUrl) {
-    const filename = `${post._id.toString()}.jpg`;
-    const downloadUrl = `${env.PUBLIC_BASE_URL}/media/${filename}`;
-    payload.embeds[0].addFields({ name: 'Image', value: `[Download](${downloadUrl})` });
+    payload.embeds[0].addFields({
+      name: 'Image',
+      value: `[Download](${buildMediaUrl(imageFilename)})`,
+    });
   }
 
   return payload;
@@ -333,6 +363,8 @@ export async function refreshApprovalMessage(post, user = null) {
     const channel = await getDiscordClient().channels.fetch(post.discordChannelId);
     const message = await channel.messages.fetch(post.discordMessageId);
 
+    // The image file is re-sent as part of the edit — see the note on
+    // `buildApprovalPayload`. Leaving it out drops the attachment silently.
     await message.edit(buildApprovalPayload(post, user));
     return true;
   } catch (err) {

@@ -115,6 +115,8 @@ generationLogSchema.index({ error: 1, createdAt: -1 });
  * @param {number} [entry.usage.inputTokens] - Prompt tokens.
  * @param {number} [entry.usage.outputTokens] - Completion tokens.
  * @param {number} [entry.durationMs] - Wall-clock duration.
+ * @param {number} [entry.estimatedCostUsd] - Estimated USD, computed by
+ *   `usageLogger` from its rate card. Null when the model has no rate.
  * @param {Error|string} [entry.error] - Failure, when the call did not succeed.
  * @param {object} [entry.meta] - Extra context.
  * @returns {Promise<object|null>} The saved document, or null if the write failed.
@@ -127,6 +129,7 @@ generationLogSchema.statics.record = async function record({
   provider = null,
   usage = null,
   durationMs = null,
+  estimatedCostUsd = null,
   requestId = null,
   error = null,
   meta = {},
@@ -140,6 +143,12 @@ generationLogSchema.statics.record = async function record({
       inputTokens: usage?.inputTokens ?? null,
       outputTokens: usage?.outputTokens ?? null,
       durationMs,
+      // Written from the caller's estimate. This parameter was previously
+      // accepted by `logGeneration` and silently dropped here — it was not
+      // destructured — so every row stored null and `costByUser` summed to
+      // zero. A cost report that always reads $0 is worse than no report: it
+      // looks like the quotas are free.
+      estimatedCostUsd,
       requestId,
       // Normalise an Error to its message so a row stays queryable text.
       error: error ? String(error.message ?? error).slice(0, 500) : null,

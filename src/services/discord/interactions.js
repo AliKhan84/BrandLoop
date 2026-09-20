@@ -30,6 +30,7 @@
 
 import {
   ActionRowBuilder,
+  AttachmentBuilder,
   ButtonBuilder,
   ButtonStyle,
   EmbedBuilder,
@@ -37,10 +38,12 @@ import {
   TextInputBuilder,
   TextInputStyle,
 } from 'discord.js';
+import { existsSync } from 'node:fs';
 
 import { Post } from '../../models/Post.js';
 import { User } from '../../models/User.js';
 import { parseCustomId } from './approvalQueue.js';
+import { imageFilenameFor, imageFilePathFor } from '../ai/imageGenerator.js';
 import { approvePost, regeneratePost, rejectPost } from '../planService.js';
 import {
   DISCORD_CONTENT_LIMIT,
@@ -64,8 +67,8 @@ import { logger } from '../../utils/logger.js';
  *
  * @param {object} post - The approved post document.
  * @param {object} payload - The publish payload from `services/publishing`.
- * @returns {{content: string, embeds: EmbedBuilder[], components: ActionRowBuilder[]}}
- *   The message payload.
+ * @returns {{content: string, embeds: EmbedBuilder[], components: ActionRowBuilder[],
+ *   files: AttachmentBuilder[]}} The message payload.
  * @sideeffect none (pure)
  */
 export function buildPublishedPayload(post, payload) {
@@ -119,7 +122,21 @@ export function buildPublishedPayload(post, payload) {
     embed.setDescription(`${payload.instructions}\n\n${text}`.slice(0, DISCORD_EMBED_DESCRIPTION_LIMIT));
   }
 
-  return { content: fits ? copy : '', embeds: [embed], components };
+  // The image travels with the post into its approved state. It is what the user
+  // needs for the manual publish, and this edit replaces the approval payload —
+  // which would otherwise take the attachment with it, because Discord drops
+  // attachments on an edit unless they are re-sent.
+  const files = [];
+
+  if (post.imageUrl) {
+    const filename = imageFilenameFor(post._id);
+    const filePath = imageFilePathFor(post._id);
+
+    if (existsSync(filePath)) files.push(new AttachmentBuilder(filePath, { name: filename }));
+    embed.setImage(post.imageUrl);
+  }
+
+  return { content: fits ? copy : '', embeds: [embed], components, files };
 }
 
 /**

@@ -40,6 +40,14 @@ const RATE_CARD = Object.freeze({
   'gemini-3.6-flash': { input: 0.30, output: 2.50 },
   'gemini-3.1-flash-lite': { input: 0.10, output: 0.40 },
   'gemini-3.5-flash-lite': { input: 0.10, output: 0.40 },
+  // Image models bill per token like any other, and the output tokens *are* the
+  // image (measured on gpt-image-1: 31 input tokens against 1,056 output for
+  // one 1024x1024 medium image). Input tokens can be priced differently by type
+  // — text vs image — which this two-rate shape cannot express, so the estimate
+  // is deliberately approximate. gpt-image-1 has since left the provider's
+  // pricing page, so re-check the figure before relying on it; the point of
+  // this entry is to show that images dominate spend, not to bill anyone.
+  'gpt-image-1': { input: 5, output: 40 },
 });
 
 /**

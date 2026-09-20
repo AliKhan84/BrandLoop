@@ -125,6 +125,50 @@ reasoning model and spends output tokens on internal reasoning — a trivial JSO
 131 tokens against 6 for `gpt-4.1-mini`, which is why the cheap tier uses a non-reasoning
 model.
 
+### 0.6 AMENDMENTS — PHASE 3 BUILT (was §7, deferred by A3)
+
+A3 deferred image generation because every **Gemini** image model returned `429 limit: 0`.
+§0.5 switched the provider to OpenAI, where `gpt-image-1` has quota, so Phase 3 was built
+and verified live rather than left deferred. **§7 describes the specification; this section
+records what actually shipped and the three deviations from it.**
+
+| # | Spec said | What shipped | Why |
+|---|---|---|---|
+| P1 | `generateImageForPost(post)` calls the provider directly | The provider gained `generateImage()` on **both** implementations, and `imageGenerator` builds the prompt, writes the file and classifies failures | Keeps the provider abstraction intact — an `AI_PROVIDER=gemini` switch must not silently lose images. The Gemini branch is written but **unexercised** (that key still has zero image quota); the OpenAI branch is the verified one |
+| P2 | Wire into `generateDayPost` only | Also wired into `regeneratePost` | A rejected draft is a rejection of the writing, not of the artwork. Leaving it out produced a replacement that asked for an image and had none |
+| P3 | Notices of a skipped image are transient | `Post.imageSkipReason` persists it | The approval message is rebuilt from the document on every edit, so a note held only in memory vanished on the next re-render |
+
+**Also found live, and fixed:** Discord **does not preserve a message's attachments across
+an edit**. Re-rendering a message without re-sending the file left the image message with no
+attachment at all — the tempting "don't re-upload what is already there" optimisation. The
+payload now re-attaches the file on every render, and a regression test pins it. The
+approved-state message re-attaches it too, so the image survives the Approve edit.
+
+**Second defect the acceptance check exposed:** `GenerationLog.record` accepted
+`estimatedCostUsd` from `logGeneration` and **silently dropped it** — the parameter was
+never destructured — so every row stored `null` and the PRD §7 cost table summed to `$0`.
+Quotas looked free. Now written through. Rows created before the fix keep their null cost;
+there is no backfill, so the report is accurate from here on rather than retroactively.
+
+**Measured on this key:** one 1024x1024 image = 115KB JPEG in 16.8s, 31 input / 1,056 output
+tokens (≈$0.042 estimated). Delivery verified end to end: image attached in the Discord DM,
+`/media/{postId}.jpg` served with `200 image/jpeg`, and a capped weekly bucket queues the
+post text-only with the note rather than erroring. `npm run probe -- --images` now exercises
+the real generation path (opt-in, because the call is paid).
+
+**Follow-up — getting the image into LinkedIn.** The composer page copied the text and stopped
+there, which left the image behind at exactly the step it is needed. LinkedIn has no URL
+parameter that attaches an image (the link has no way to prefill *anything*, per `CopyAndOpen`),
+and the API that could is out of scope. So the page copies the **image** to the clipboard
+instead, and LinkedIn takes it on paste. Two consequences worth knowing:
+
+- The browser cannot read the API's `/media` URL — no CORS, and a canvas drawn from it is
+  tainted — so the bytes are served through a new dashboard route, `GET /api/posts/[postId]/image`,
+  which loads the post with the session token first so it cannot proxy anyone else's image.
+- The JPEG is re-encoded to **PNG in the canvas before the write**, because Chromium refuses
+  `image/jpeg` on the clipboard outright. Verified in a real browser: the clipboard ends up
+  holding `image/png`.
+
 ---
 
 ## 0. WHERE THIS PLAN LIVES
@@ -486,17 +530,25 @@ Both return a uniform shape so the Discord message renders identically for each 
 
 ---
 
-## 7. PHASE 3 — Image generation ⏸️ DEFERRED
+## 7. PHASE 3 — Image generation ✅ BUILT
 
-> ## ⏸️ NOT BEING BUILT IN THIS PASS — amendment A3
+> ## ✅ BUILT — on OpenAI, not Gemini. See §0.6 for what actually shipped.
 >
-> **Why:** every Gemini image model returns `429` with `limit: 0` on this key. Verified across `gemini-3.1-flash-image`, `gemini-3-pro-image` and `gemini-3.1-flash-lite-image`. There is no code change that works around a zero quota — it needs billing enabled on the Google AI Studio project.
+> **Why the deferral was lifted:** this section was deferred under amendment A3 because
+> every **Gemini** image model returned `429 limit: 0` on the Google key. §0.5 then switched
+> the provider to OpenAI, where `gpt-image-1` has quota — verified again before the build
+> (one 1024x1024 image, 70KB, 15.6s). The content below is kept as the original
+> specification; §0.6 records the three deviations the build produced, plus the Discord
+> attachment behaviour that only showed up when it ran.
 >
-> **What still ships now:** the `Post` schema fields `needsImage`, `imagePrompt`, `imageGeneratedAt` and `imageUrl` are created in Step 0.5. They are inert in this build but mean Phase 3 later is an additive change with **no data migration**.
+> **What had already shipped and was reused as predicted:** the `Post` schema fields
+> `needsImage`, `imagePrompt`, `imageGeneratedAt`, `imageUrl`, `IMAGE_SIZES`, the
+> `generateImage()` slot in the provider interface and the static `/media` route. Phase 3
+> needed **no data migration**; one field (`imageSkipReason`) was added alongside the code.
 >
-> **What is deliberately not written:** `services/ai/imageGenerator.js`. Writing it now would mean shipping code I cannot execute even once. The `generateImage()` slot exists in the provider interface, so it drops in cleanly when a key with image quota exists.
->
-> **To unblock:** enable billing at `https://aistudio.google.com/apikey` → the project → **Set up Billing**. Then this section applies as written, with the model names in Step 3.1 swapped for Gemini's.
+> **Gemini's image branch is written but unexercised** — that key still has zero image
+> quota. Switching `AI_PROVIDER=gemini` will not silently lose images; it will attempt the
+> call and degrade to text-only with the note, exactly as a refusal does.
 
 **Step 3.1 — `services/ai/imageGenerator.js`** → `generateImageForPost(post)`
 - Model from `IMAGE_MODEL`. For the Gemini provider the call is `generateContent` with the image model (Imagen is retired — it shut down 2026-08-17) and the bytes come out of `candidates[0].content.parts[].inlineData.data` as base64. For an OpenAI key it is `images.generate`. Either way, keep it an env var and let `probe` be the single place that validates the model name.

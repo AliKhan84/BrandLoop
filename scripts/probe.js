@@ -22,13 +22,28 @@
  * or a pre-deploy step and a broken credential stops the deploy.
  *
  * Run with: npm run probe
+ *   Add `-- --images` to also generate one real image, proving the Phase 3 path
+ *   end to end. Off by default because that call is paid (~$0.04, ~16s).
  */
 
 import mongoose from 'mongoose';
 import { env } from '../src/config/env.js';
 import { connectDatabase, disconnectDatabase } from '../src/db/connect.js';
-import { describeImageModel, describeModel, getProviderName } from '../src/services/ai/index.js';
+import {
+  describeImageModel,
+  describeModel,
+  getProvider,
+  getProviderName,
+} from '../src/services/ai/index.js';
 import { safeString } from '../src/utils/logger.js';
+
+/**
+ * Whether to exercise the real image generation path.
+ *
+ * Opt-in because it is a paid call (see the note in `checkAi`); everything else
+ * in this probe is free or negligible.
+ */
+const IMAGE_PROBE_REQUESTED = process.argv.includes('--images');
 
 /**
  * Collected outcomes, so the summary can be printed after all checks run.
@@ -219,21 +234,48 @@ async function checkAi() {
     return 'structured output verified';
   });
 
-  // The image model is not used by any code in this build (Phase 3 is not
-  // written), so it is reported as informational and a failure here does not
-  // fail the run.
+  // The image model is informational either way: a failure here does not fail
+  // the run, because a text-only draft is a supported outcome (see
+  // `IMAGE_SKIP_NOTES`).
   //
   // It is checked through `describeImageModel`, NOT `describeModel`. Image
   // models are not served by the same endpoint as text models, so probing one
   // through the text path returns a 400 that reads like "model unavailable"
   // when the model is perfectly fine. Testing through the wrong endpoint gives
   // a confident wrong answer, which is worse than not testing at all.
-  const imageCheck = await describeImageModel(env.IMAGE_MODEL);
-
-  if (imageCheck.ok) {
-    pass(`IMAGE_MODEL "${env.IMAGE_MODEL}"`, imageCheck.note ?? 'available', { critical: false });
+  //
+  // Phase 3's image model is checked for visibility by default, and the real
+  // generation path only on request.
+  //
+  // WHY VISIBILITY IS NOT ENOUGH: a model can be listed and still refuse the
+  // key — `gemini-2.5-flash` was listed and returned 404, and every Gemini
+  // image model was listed and returned `429 limit: 0`. That is precisely how
+  // Phase 3 came to be deferred, so a name check alone cannot be trusted.
+  //
+  // WHY IT IS OPT-IN ANYWAY: a real image costs ~$0.04 and ~16 seconds, and
+  // the probe is meant to be cheap enough to run on every setup. `--images`
+  // turns the paid call on, and then it is the proof.
+  if (IMAGE_PROBE_REQUESTED) {
+    await check(`IMAGE_MODEL "${env.IMAGE_MODEL}" generates an image`, async () => {
+      const provider = await getProvider();
+      const result = await provider.generateImage({
+        prompt: 'A single teal circle centred on a warm white background, flat vector, no text.',
+        size: '1024x1024',
+      });
+      return `${result.buffer.length} bytes of ${result.mimeType} in ${result.durationMs}ms`;
+    }, { critical: false });
   } else {
-    fail(`IMAGE_MODEL "${env.IMAGE_MODEL}"`, imageCheck.reason ?? 'unavailable', { critical: false });
+    const imageCheck = await describeImageModel(env.IMAGE_MODEL);
+
+    if (imageCheck.ok) {
+      pass(
+        `IMAGE_MODEL "${env.IMAGE_MODEL}"`,
+        `${imageCheck.note ?? 'available'} — run with --images to generate one for real`,
+        { critical: false },
+      );
+    } else {
+      fail(`IMAGE_MODEL "${env.IMAGE_MODEL}"`, imageCheck.reason ?? 'unavailable', { critical: false });
+    }
   }
 
   return textOk;

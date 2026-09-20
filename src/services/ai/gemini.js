@@ -3,7 +3,8 @@
  *
  * RESPONSIBILITY
  *   Implement the provider interface (`generateStructured`, `generateText`,
- *   `describeModel`) against Google's `@google/genai` SDK.
+ *   `generateImage`, `describeModel`, `describeImageModel`) against Google's
+ *   `@google/genai` SDK.
  *
  * WHY GEMINI RATHER THAN OPENAI
  *   The available key is a Gemini key. Gemini's structured-output support was
@@ -482,6 +483,85 @@ export async function generateText({
 }
 
 /**
+ * Generates one image and returns its bytes.
+ *
+ * ## Why this is not routed through `callWithRetry`
+ *
+ * `callWithRetry` reads a text part out of the response, and an image response
+ * has none — an image would look like an empty response and be retried four
+ * times before failing. It also has no retry to offer that is worth having: an
+ * image call is the most expensive request in the pipeline, and a refusal or a
+ * bad model name is deterministic. The caller degrades the post to text-only
+ * instead.
+ *
+ * ## The shared `size` parameter is unused here
+ *
+ * `IMAGE_SIZES` exists because OpenAI accepts explicit dimensions. This
+ * provider's image models return their own resolution and reject a `size`, so
+ * the parameter is accepted by the interface and deliberately not sent.
+ *
+ * **Not exercised on this key**: the Gemini key has zero image quota
+ * (`429 limit: 0` on every image model — the reason Phase 3 was originally
+ * deferred). The OpenAI implementation is the one verified live; this branch is
+ * written so an `AI_PROVIDER=gemini` switch does not silently lose images.
+ *
+ * @param {object} params
+ * @param {string} params.prompt - The full image prompt.
+ * @param {string} [params.model] - Model id; defaults to `env.IMAGE_MODEL`.
+ * @param {string} [params.label='generateImage'] - Name used in logs.
+ * @returns {Promise<{buffer: Buffer, mimeType: string, model: string,
+ *   usage: object, durationMs: number, requestId: null}>} The image bytes.
+ * @throws {ApiError} When the call fails or returns no image bytes.
+ * @sideeffect Makes a network request.
+ */
+export async function generateImage({ prompt, model = env.IMAGE_MODEL, label = 'generateImage' }) {
+  const startedAt = Date.now();
+
+  const response = await client.models.generateContent({
+    model,
+    contents: prompt,
+    config: {
+      httpOptions: { timeout: AI_REQUEST_TIMEOUT_MS },
+    },
+  });
+
+  const candidate = response?.candidates?.[0];
+  const imagePart = (candidate?.content?.parts ?? []).find((part) => part?.inlineData?.data);
+
+  if (!imagePart) {
+    const { ApiError } = await import('../../utils/ApiError.js');
+
+    const finishReason = candidate?.finishReason ?? response?.promptFeedback?.blockReason ?? null;
+
+    if (finishReason) {
+      // Set to the same `code` OpenAI uses for a refusal so
+      // `imageGenerator.classifyImageError` matches one vocabulary rather than
+      // needing a branch per provider. The finish reason itself is carried in
+      // the message, which is what gets logged.
+      const refusal = new Error(`The image model declined this prompt (${finishReason}).`);
+      refusal.code = 'moderation_blocked';
+
+      logger.warn(`${label}: refused by ${finishReason} — not retrying (deterministic)`, { model });
+      throw refusal;
+    }
+
+    throw ApiError.upstream(`Empty image response from ${model}`);
+  }
+
+  return {
+    buffer: Buffer.from(imagePart.inlineData.data, 'base64'),
+    mimeType: imagePart.inlineData.mimeType ?? 'image/png',
+    model,
+    durationMs: Date.now() - startedAt,
+    usage: {
+      inputTokens: response.usageMetadata?.promptTokenCount ?? null,
+      outputTokens: response.usageMetadata?.candidatesTokenCount ?? null,
+    },
+    requestId: null,
+  };
+}
+
+/**
  * Checks whether a model id is callable with the configured key.
  *
  * Used by `scripts/probe.js` so a bad model name surfaces at setup rather than
@@ -562,4 +642,11 @@ export async function describeImageModel(model) {
   }
 }
 
-export default { generateStructured, generateText, describeModel, describeImageModel, providerName };
+export default {
+  generateStructured,
+  generateText,
+  generateImage,
+  describeModel,
+  describeImageModel,
+  providerName,
+};

@@ -18,12 +18,17 @@
  *     → { data, model, usage, durationMs }
  *   generateText({ systemPrompt, userPrompt, model, temperature, label })
  *     → { text, model, usage, durationMs }
+ *   generateImage({ prompt, size, model, label })
+ *     → { buffer, mimeType, model, usage, durationMs, requestId }
  *   describeModel(model)
  *     → { ok, model, reason? }
+ *   describeImageModel(model)
+ *     → { ok, model, note?, reason? }
  *   providerName → string
  *
  * Anything a generator needs beyond this belongs in the generator, not here.
- * `imageGenerator` will add a fourth function when Phase 3 is unblocked.
+ * `imageGenerator` is the only caller of `generateImage`; the probe is the only
+ * caller of the two `describe*` checks.
  *
  * DOES NOT OWN: prompt construction, quota checks, or logging of results.
  */
@@ -107,6 +112,23 @@ export async function generateText(params) {
 }
 
 /**
+ * Generates one image and returns its bytes.
+ *
+ * Phase 3. The bytes are not written anywhere here — `imageGenerator` owns the
+ * prompt and the file layout; this is only the provider hop.
+ *
+ * @param {object} params - See the provider contract above.
+ * @returns {Promise<{buffer: Buffer, mimeType: string, model: string,
+ *   usage: object, durationMs: number, requestId: string|null}>} The image.
+ * @throws {import('../../utils/ApiError.js').ApiError} When the call fails.
+ * @sideeffect Makes a network request.
+ */
+export async function generateImage(params) {
+  const provider = await getProvider();
+  return provider.generateImage(params);
+}
+
+/**
  * Checks whether a model id is usable with the configured key.
  *
  * @param {string} model - The model id to test.
@@ -151,6 +173,7 @@ export default {
   getProvider,
   generateStructured,
   generateText,
+  generateImage,
   describeModel,
   describeImageModel,
   getProviderName,
