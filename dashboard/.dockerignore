@@ -1,0 +1,29 @@
+# Build context exclusion for the dashboard image.
+#
+# The dashboard is its own build context (compose sets `context: ./dashboard`),
+# so this list is what gets uploaded when the dashboard image is built.
+
+# Installed from the lockfile inside the build stage.
+node_modules
+
+# Build output from a local `npm run build` — the image builds its own, and a
+# stale .next copied in would produce a container that serves last week's code.
+.next
+out
+
+# Local secrets. The template stays: it documents what the image needs.
+.env
+.env*
+!.env.example
+
+# Compose and Docker files are not part of the app.
+Dockerfile
+.dockerignore
+
+# Editor and OS noise.
+.vercel
+*.tsbuildinfo
+next-env.d.ts
+*.log
+.DS_Store
+Thumbs.db

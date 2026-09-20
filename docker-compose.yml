@@ -1,0 +1,89 @@
+# BrandLoop — both processes, in two containers.
+#
+# RESPONSIBILITY
+#   Turn the two runtimes AGENTS.md describes (Express API on 8080, Next.js
+#   dashboard on 3000) into one command, with the one piece of state that must
+#   outlive a container — the generated images — on a volume.
+#
+# WHY THERE IS NO DATABASE SERVICE
+#   MongoDB is Atlas, and that is what the project is written against: db/connect.js
+#   takes a single connection string and PRD §8 keeps the database off the
+#   application host. A local mongo container here would be a second database
+#   with different data, used by nobody.
+#
+# WHY NO REVERSE PROXY
+#   The documented deployment (PRD §8) already terminates TLS with Nginx +
+#   Certbot on the university server. Adding Caddy or Nginx here would mean two
+#   proxies disagreeing about who owns the certificate. Put these ports behind
+#   the existing one.
+#
+# USAGE
+#   docker compose up -d --build        start both, build if needed
+#   docker compose logs -f api          follow the bot
+#   docker compose run --rm api npm run seed    create the demo account
+#   docker compose down                 stop; the media volume survives
+
+services:
+  api:
+    build:
+      context: .
+    # Every credential — MONGODB_URI, DISCORD_BOT_TOKEN, DISCORD_APP_ID,
+    # JWT_SECRET and the AI key. Passed as environment variables rather than by
+    # mounting .env, because env.js calls dotenv with `override: true`: a .env
+    # file inside the container would silently beat anything set here.
+    env_file:
+      - .env
+    environment:
+      # env.js defaults PORT to 3000, which the dashboard already owns. 8080 is
+      # the port AGENTS.md documents the API on, and what the dashboard's own
+      # template points API_BASE_URL at.
+      PORT: 8080
+      # The manual /api/dev/* triggers are force-disabled under production by
+      # design (env.js). For a live demo, change this to development — the
+      # pipeline can then be driven a slot at a time instead of waiting for 09:00.
+      NODE_ENV: production
+      # Both are URLs a *user* clicks, so they must be reachable from outside —
+      # PUBLIC_BASE_URL builds links to generated images, DASHBOARD_BASE_URL is
+      # the LinkedIn copy-and-open page. Override both for a real domain.
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8080}
+      DASHBOARD_BASE_URL: ${DASHBOARD_BASE_URL:-http://localhost:3000}
+    volumes:
+      # Generated JPEGs. Without this they are lost whenever the container is
+      # replaced, and the LinkedIn compose page loses its image while the Discord
+      # DM keeps its own copy (Discord hosts attachments) — an inconsistency that
+      # looks like a bug.
+      - media:/app/media
+    ports:
+      - "8080:8080"
+    # Reaps zombies and forwards SIGTERM properly, so the graceful shutdown in
+    # index.js runs instead of the container being killed after its timeout.
+    init: true
+    restart: unless-stopped
+
+  dashboard:
+    build:
+      context: ./dashboard
+      args:
+        # Build-time because Next inlines NEXT_PUBLIC_* during `next build`.
+        # Read from .env next to this file; empty means the "Add to Discord"
+        # button ships with no href (the template documents this).
+        NEXT_PUBLIC_DISCORD_INSTALL_URL: ${NEXT_PUBLIC_DISCORD_INSTALL_URL:-}
+    environment:
+      # Service-name DNS on the compose network. The browser never needs this
+      # address — every call goes server-to-server through lib/api.ts.
+      API_BASE_URL: http://api:8080
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+    ports:
+      - "3000:3000"
+    # Not gated on the API's health: the dashboard renders a useful error screen
+    # when the API is unreachable (components/route-error.tsx), so coupling its
+    # start-up to the API would only make a recoverable situation worse.
+    depends_on:
+      - api
+    init: true
+    restart: unless-stopped
+
+volumes:
+  media:

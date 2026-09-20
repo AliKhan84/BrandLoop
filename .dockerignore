@@ -1,0 +1,42 @@
+# Build context exclusion for the API image (root Dockerfile).
+#
+# WHY THIS FILE EXISTS AT ALL
+#   Docker sends the whole context to the daemon before it builds. This repo has
+#   a node_modules tree at the root and a second, larger one inside dashboard/;
+#   without these rules every API build uploads both, and .env — which holds
+#   every live credential — would be uploaded too.
+
+# Secrets. `.env.example` stays: it is a template with no real values, and it
+# documents what the image needs at run time.
+.env
+.env.*
+!.env.example
+
+# Generated post images: belong to the running container's volume, not the image.
+media/
+
+# Installed in the build stage from package-lock.json.
+node_modules
+**/node_modules
+
+# The dashboard is its own image with its own context (dashboard/Dockerfile).
+# Excluding it here keeps the API's build cache stable — a dashboard edit should
+# not invalidate the API image.
+dashboard
+
+# Not needed at run time: the tests, the design docs, and the slide deck.
+tests
+docs
+slide.md
+
+# Version control and local tooling state.
+.git
+.gitignore
+.gitattributes
+.commandcode
+sdkprobe
+
+# Noise.
+*.log
+.DS_Store
+Thumbs.db
