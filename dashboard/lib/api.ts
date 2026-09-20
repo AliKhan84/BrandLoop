@@ -91,6 +91,18 @@ export class ApiError extends Error {
   get isUnreachable(): boolean {
     return this.statusCode === 0;
   }
+
+  /**
+   * True when the API answered but could not serve the request right now.
+   *
+   * Distinct from a 500 on purpose: the API returns this when its database
+   * connection is down, which is an outage rather than a defect, and the same
+   * request will usually succeed seconds later. A 500 says "this is broken";
+   * this says "try again".
+   */
+  get isUnavailable(): boolean {
+    return this.statusCode === 503;
+  }
 }
 
 /**

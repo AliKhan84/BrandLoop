@@ -1,4 +1,4 @@
-import { BrandLoopMark } from '@/components/brand-loop-mark';
+import { BrandLogo } from '@/components/brand-logo';
 
 /**
  * Layout for the signed-out routes.
@@ -29,7 +29,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
       <main className="order-1 flex flex-col justify-center px-6 py-12 lg:order-2 lg:px-16">
         <div className="mx-auto flex w-full max-w-sm flex-col gap-8">
           <div className="flex items-center gap-2 lg:hidden">
-            <BrandLoopMark className="size-6" />
+            <BrandLogo className="size-8" priority />
             <span className="text-lg font-semibold tracking-tight">BrandLoop</span>
           </div>
           {children}
@@ -43,7 +43,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
       */}
       <aside className="bg-muted/40 border-border order-2 hidden flex-col justify-between border-r px-16 py-14 lg:order-1 lg:flex">
         <div className="flex items-center gap-2.5">
-          <BrandLoopMark className="size-7" />
+          <BrandLogo className="size-10" priority />
           <span className="text-lg font-semibold tracking-tight">BrandLoop</span>
         </div>
 

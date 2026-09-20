@@ -134,9 +134,23 @@ export interface Post {
   sourceNewsUrl: string | null;
   sourceNewsTitle: string | null;
   sourceNewsName: string | null;
-  /** Phase 3 fields. Inert while image generation is blocked on quota. */
+  /**
+   * Whether the text model asked for an accompanying image on this post.
+   * True with no `imageUrl` means the image failed or the quota was spent.
+   */
   needsImage: boolean;
+  /**
+   * The image's public URL on the API. Display-only from the browser: the API
+   * has no CORS, so the bytes are read through this dashboard's own proxy route
+   * instead when they are needed for the clipboard.
+   */
   imageUrl: string | null;
+  /**
+   * Why a requested image is missing, or null when one was made or none was
+   * asked for. Shown on the compose page so a text-only draft reads as degraded
+   * rather than broken.
+   */
+  imageSkipReason: string | null;
   regenerationCount: number;
   publishedAt: string | null;
   createdAt: string;

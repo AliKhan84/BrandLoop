@@ -1,8 +1,10 @@
 import type { Metadata } from 'next';
+import { cookies } from 'next/headers';
 import { Geist, Geist_Mono, Source_Serif_4 } from 'next/font/google';
 
 import { Toaster } from '@/components/ui/sonner';
 import { ThemeProvider } from '@/components/theme-provider';
+import { parseTheme, THEME_COOKIE } from '@/lib/theme';
 import './globals.css';
 
 /**
@@ -46,27 +48,45 @@ export const metadata: Metadata = {
 /**
  * Renders the application's outermost shell.
  *
+ * ## The theme is decided here, before any of it is sent
+ *
+ * The visitor's choice is a cookie, so the server can put `data-theme` on
+ * `<html>` in the HTML itself. Nothing has to run before the first paint, which
+ * is what removed the last inline `<script>` from this app: React 19 logs an
+ * error whenever it client-renders one, and an error recovery re-renders the
+ * whole root tree (see `lib/theme.ts` for the full account).
+ *
+ * `system` renders no attribute at all. That leaves `color-scheme: light dark`
+ * in charge, and `globals.css` resolves the palette from the media query —
+ * the one input no server can know.
+ *
+ * The cost is that reading a cookie makes every route render per request
+ * instead of being prerendered. That is a fair trade here: this dashboard is
+ * served by its own Node process, and what it buys is a theme that is correct
+ * in the first byte, with or without JavaScript.
+ *
  * @param props - Standard layout props.
  * @param props.children - The active route.
  * @returns The HTML document.
- * @sideeffect none
+ * @sideeffect Reads the theme cookie.
  */
-export default function RootLayout({ children }: LayoutProps<'/'>) {
+export default async function RootLayout({ children }: LayoutProps<'/'>) {
+  const theme = parseTheme((await cookies()).get(THEME_COOKIE)?.value);
+
   return (
-    // `suppressHydrationWarning` because next-themes writes the theme class onto
-    // <html> before React hydrates. That is intentional and not a mismatch.
+    // `suppressHydrationWarning` is not about the theme — that is server
+    // rendered and agrees with the client. It is for browser extensions, which
+    // rewrite `<html>` (a forced-dark mode is the usual one) before React
+    // hydrates, and which React would otherwise report as a mismatch on every
+    // page.
     <html
       lang="en"
       suppressHydrationWarning
+      data-theme={theme === 'system' ? undefined : theme}
       className={`${geistSans.variable} ${geistMono.variable} ${sourceSerif.variable}`}
     >
       <body className="bg-background text-foreground min-h-full antialiased">
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="system"
-          enableSystem
-          disableTransitionOnChange
-        >
+        <ThemeProvider initialTheme={theme}>
           {children}
           {/* Mounted at the root so any route can raise a toast without
               rendering its own container. */}

@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 
 import { BottomNav, SidebarNav } from '@/components/app-nav';
-import { BrandLoopMark } from '@/components/brand-loop-mark';
+import { BrandLogo } from '@/components/brand-logo';
 import { QuotaMeter } from '@/components/quota-meter';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { UserMenu } from '@/components/user-menu';
@@ -56,23 +56,27 @@ export default async function WorkspaceLayout({ children }: { children: React.Re
       */}
       <aside className="bg-sidebar border-sidebar-border sticky top-0 hidden h-dvh flex-col justify-between border-r px-3 py-4 lg:flex">
         <div className="flex flex-col gap-6">
-          <div className="flex items-center gap-2.5 px-2">
-            <BrandLoopMark className="size-6 text-sidebar-foreground" />
-            <span className="text-sidebar-foreground text-base font-semibold tracking-tight">
-              BrandLoop
-            </span>
+          {/* Brand and the theme switch share the top row. The switch used to
+              sit in the bottom cluster beside the account menu, where it read
+              as an account preference; at the top it reads as a display
+              setting, which is what it is — and it is where a person looks for
+              it first. */}
+          <div className="flex items-center justify-between gap-2 px-2">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <BrandLogo className="size-8" priority />
+              <span className="text-sidebar-foreground text-base font-semibold tracking-tight">
+                BrandLoop
+              </span>
+            </div>
+            <ThemeToggle />
           </div>
           <SidebarNav />
         </div>
 
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-3">
           {usage && <QuotaMeter usage={usage} variant="sidebar" />}
-          <div className="flex items-center gap-1">
-            <div className="min-w-0 flex-1">
-              <UserMenu user={user} />
-            </div>
-            <ThemeToggle />
-          </div>
+          {/* Full width now that the theme switch no longer shares the row. */}
+          <UserMenu user={user} />
         </div>
       </aside>
 
@@ -81,7 +85,7 @@ export default async function WorkspaceLayout({ children }: { children: React.Re
             on a phone: identity and the account menu. */}
         <header className="border-border bg-background/95 sticky top-0 z-30 flex items-center justify-between border-b px-4 py-3 backdrop-blur lg:hidden">
           <div className="flex items-center gap-2">
-            <BrandLoopMark className="size-5" />
+            <BrandLogo className="size-7" priority />
             <span className="text-base font-semibold tracking-tight">BrandLoop</span>
           </div>
           <div className="flex items-center gap-1">

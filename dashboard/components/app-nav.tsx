@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { FileText, LayoutGrid, Settings } from 'lucide-react';
+import { CreditCard, FileText, LayoutGrid, Settings } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 
@@ -17,6 +17,7 @@ import { cn } from '@/lib/utils';
 const NAV_ITEMS = [
   { href: '/workspace', label: 'Workspace', icon: LayoutGrid },
   { href: '/drafts', label: 'Drafts', icon: FileText },
+  { href: '/billing', label: 'Billing', icon: CreditCard },
   { href: '/settings', label: 'Settings', icon: Settings },
 ] as const;
 
@@ -79,8 +80,9 @@ export function SidebarNav() {
  * Mobile bottom navigation.
  *
  * Placed at the bottom rather than the top because the lower quarter of a phone
- * screen is what a thumb reaches without adjusting grip. Three items across the
- * full width also clears the 44px minimum touch target with room to spare.
+ * screen is what a thumb reaches without adjusting grip. The row is four items
+ * across the full width, which still clears the 44px minimum touch target — at
+ * 320px each item is 80px wide — and the labels are short enough not to wrap.
  *
  * @returns The bottom bar.
  * @sideeffect none
@@ -96,7 +98,7 @@ export function BottomNav() {
       // sitting underneath it.
       style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
     >
-      <ul className="grid grid-cols-3">
+      <ul className="grid grid-cols-4">
         {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
           const active = isActive(pathname, href);
           return (

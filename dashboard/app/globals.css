@@ -2,7 +2,35 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
-@custom-variant dark (&:is(.dark *));
+/*
+ * The dark variant, in three cases rather than one.
+ *
+ * `.dark` used to be the whole story: a script put the class on <html> before
+ * paint. That script is gone — React 19 logs an error whenever it client-renders
+ * a script element, and error recovery does exactly that (see `lib/theme.ts`) —
+ * so the theme now has to work with no JavaScript at all.
+ *
+ * What replaced it:
+ *
+ *   • an explicit choice is a `data-theme` attribute the server renders from a
+ *     cookie, and
+ *   • "system" is the absence of that attribute, resolved here by the media
+ *     query, which is the only part of this no server can know.
+ *
+ * The attribute carries the media-query branch because a media query cannot be
+ * combined with a selector in one rule: `@slot` emits the utility into each
+ * branch, so `dark:` works whether dark came from the OS or from a choice.
+ */
+@custom-variant dark {
+  &:where([data-theme='dark'], [data-theme='dark'] *) {
+    @slot;
+  }
+  @media (prefers-color-scheme: dark) {
+    &:where(:root:not([data-theme]), :root:not([data-theme]) *) {
+      @slot;
+    }
+  }
+}
 
 /*
  * BrandLoop design tokens.
@@ -81,116 +109,99 @@
   --radius-xl: calc(var(--radius) * 1.4);
 }
 
+/*
+ * Colour tokens, as light/dark pairs.
+ *
+ * `light-dark()` resolves against `color-scheme`, which is what makes a theme
+ * work before any JavaScript runs:
+ *
+ *   • `color-scheme: light dark` (here) follows the operating system, so the
+ *     "system" choice needs no script and no attribute.
+ *   • An explicit choice pins it in the two rules below, so the same token
+ *     declarations resolve the other way.
+ *
+ * That is also why the palette is no longer two blocks. A pair per token cannot
+ * drift the way a light block and a dark block can: the two values that must
+ * stay in step sit on one line, and a token added here cannot arrive dark-side
+ * only.
+ */
 :root {
-  /* Paper. Warm off-white — the page the work sits on. */
-  --background: oklch(0.985 0.006 85);
-  --foreground: oklch(0.22 0.012 75);
+  color-scheme: light dark;
+
+  /* Paper. Warm off-white — the page the work sits on. Its dark pair is a warm
+     near-black with the same slight amber lean, so the product has one identity
+     rather than two. */
+  --background: light-dark(oklch(0.985 0.006 85), oklch(0.19 0.008 75));
+  --foreground: light-dark(oklch(0.22 0.012 75), oklch(0.94 0.008 85));
 
   /* Surfaces lift by getting slightly brighter, not by casting shadow first.
      A shadow on every panel is how a page turns into a pile of boxes. */
-  --card: oklch(0.995 0.004 85);
-  --card-foreground: oklch(0.22 0.012 75);
-  --popover: oklch(0.995 0.004 85);
-  --popover-foreground: oklch(0.22 0.012 75);
+  --card: light-dark(oklch(0.995 0.004 85), oklch(0.225 0.008 75));
+  --card-foreground: light-dark(oklch(0.22 0.012 75), oklch(0.94 0.008 85));
+  --popover: light-dark(oklch(0.995 0.004 85), oklch(0.235 0.008 75));
+  --popover-foreground: light-dark(oklch(0.22 0.012 75), oklch(0.94 0.008 85));
 
   /* Amber. The only saturated colour in the system, which is what makes it
-     mean something when it appears. */
-  --primary: oklch(0.72 0.16 62);
-  --primary-foreground: oklch(0.20 0.02 70);
+     mean something when it appears. The dark value is lifted in lightness
+     because light-on-dark reads optically thinner — the same amber would look
+     muddy there. */
+  --primary: light-dark(oklch(0.72 0.16 62), oklch(0.78 0.15 65));
+  --primary-foreground: light-dark(oklch(0.20 0.02 70), oklch(0.18 0.02 70));
 
-  --secondary: oklch(0.955 0.008 85);
-  --secondary-foreground: oklch(0.30 0.012 78);
+  --secondary: light-dark(oklch(0.955 0.008 85), oklch(0.27 0.008 75));
+  --secondary-foreground: light-dark(oklch(0.30 0.012 78), oklch(0.92 0.008 85));
 
-  --muted: oklch(0.96 0.006 85);
-  --muted-foreground: oklch(0.55 0.010 80);
+  --muted: light-dark(oklch(0.96 0.006 85), oklch(0.26 0.008 75));
+  --muted-foreground: light-dark(oklch(0.55 0.010 80), oklch(0.68 0.010 80));
 
   /* Hover wash — a warm tint rather than a grey shift, so hovering feels like
      the page warming up rather than the element going dead. */
-  --accent: oklch(0.945 0.022 72);
-  --accent-foreground: oklch(0.28 0.015 75);
+  --accent: light-dark(oklch(0.945 0.022 72), oklch(0.30 0.020 70));
+  --accent-foreground: light-dark(oklch(0.28 0.015 75), oklch(0.94 0.008 85));
 
-  --destructive: oklch(0.55 0.19 27);
-  --destructive-foreground: oklch(0.99 0.005 85);
+  --destructive: light-dark(oklch(0.55 0.19 27), oklch(0.62 0.19 27));
+  --destructive-foreground: light-dark(oklch(0.99 0.005 85), oklch(0.98 0.005 85));
 
-  --border: oklch(0.90 0.008 85);
-  --input: oklch(0.89 0.010 85);
+  /* Dark borders and inputs are white at low alpha rather than a lighter grey,
+     so they read on any surface instead of only on the one they were tuned to. */
+  --border: light-dark(oklch(0.90 0.008 85), oklch(1 0 0 / 12%));
+  --input: light-dark(oklch(0.89 0.010 85), oklch(1 0 0 / 16%));
 
   /* Focus ring is a DARKER amber than the button fill on purpose: a ring must
      clear 3:1 against the surface it sits on, and the button amber does not
      against paper. The button colour is tuned for text on top of it; the ring
      colour is tuned for itself against the page. Different jobs, different
      lightness. */
-  --ring: oklch(0.58 0.15 60);
+  --ring: light-dark(oklch(0.58 0.15 60), oklch(0.72 0.15 62));
 
-  --status-pending: oklch(0.62 0.05 80);
-  --status-approved: oklch(0.52 0.13 152);
-  --status-rejected: oklch(0.55 0.19 27);
-  --status-news: oklch(0.60 0.14 55);
+  --status-pending: light-dark(oklch(0.62 0.05 80), oklch(0.68 0.04 80));
+  --status-approved: light-dark(oklch(0.52 0.13 152), oklch(0.70 0.14 152));
+  --status-rejected: light-dark(oklch(0.55 0.19 27), oklch(0.68 0.18 27));
+  --status-news: light-dark(oklch(0.60 0.14 55), oklch(0.76 0.13 58));
 
-  --platform-x: oklch(0.25 0.01 75);
-  --platform-linkedin: oklch(0.48 0.13 250);
+  --platform-x: light-dark(oklch(0.25 0.01 75), oklch(0.92 0.008 85));
+  --platform-linkedin: light-dark(oklch(0.48 0.13 250), oklch(0.68 0.12 250));
 
   --radius: 0.5rem;
 
-  --sidebar: oklch(0.975 0.006 85);
-  --sidebar-foreground: oklch(0.30 0.012 78);
-  --sidebar-primary: oklch(0.72 0.16 62);
-  --sidebar-primary-foreground: oklch(0.20 0.02 70);
-  --sidebar-accent: oklch(0.94 0.020 72);
-  --sidebar-accent-foreground: oklch(0.24 0.015 75);
-  --sidebar-border: oklch(0.90 0.008 85);
-  --sidebar-ring: oklch(0.58 0.15 60);
+  --sidebar: light-dark(oklch(0.975 0.006 85), oklch(0.215 0.008 75));
+  --sidebar-foreground: light-dark(oklch(0.30 0.012 78), oklch(0.90 0.008 85));
+  --sidebar-primary: light-dark(oklch(0.72 0.16 62), oklch(0.78 0.15 65));
+  --sidebar-primary-foreground: light-dark(oklch(0.20 0.02 70), oklch(0.18 0.02 70));
+  --sidebar-accent: light-dark(oklch(0.94 0.020 72), oklch(0.28 0.018 72));
+  --sidebar-accent-foreground: light-dark(oklch(0.24 0.015 75), oklch(0.94 0.008 85));
+  --sidebar-border: light-dark(oklch(0.90 0.008 85), oklch(1 0 0 / 12%));
+  --sidebar-ring: light-dark(oklch(0.58 0.15 60), oklch(0.72 0.15 62));
 }
 
-.dark {
-  /* Warm dark, not blue-black. A near-black with the same slight amber lean as
-     the light theme, so the product has one identity rather than two. */
-  --background: oklch(0.19 0.008 75);
-  --foreground: oklch(0.94 0.008 85);
+/* An explicit choice pins the scheme; `system` is the absence of this
+   attribute, which is what leaves the media query in charge. */
+html[data-theme='light'] {
+  color-scheme: light;
+}
 
-  --card: oklch(0.225 0.008 75);
-  --card-foreground: oklch(0.94 0.008 85);
-  --popover: oklch(0.235 0.008 75);
-  --popover-foreground: oklch(0.94 0.008 85);
-
-  /* Lifted in lightness because light-on-dark reads optically thinner — the
-     same amber as the light theme would look muddy here. */
-  --primary: oklch(0.78 0.15 65);
-  --primary-foreground: oklch(0.18 0.02 70);
-
-  --secondary: oklch(0.27 0.008 75);
-  --secondary-foreground: oklch(0.92 0.008 85);
-
-  --muted: oklch(0.26 0.008 75);
-  --muted-foreground: oklch(0.68 0.010 80);
-
-  --accent: oklch(0.30 0.020 70);
-  --accent-foreground: oklch(0.94 0.008 85);
-
-  --destructive: oklch(0.62 0.19 27);
-  --destructive-foreground: oklch(0.98 0.005 85);
-
-  --border: oklch(1 0 0 / 12%);
-  --input: oklch(1 0 0 / 16%);
-
-  --ring: oklch(0.72 0.15 62);
-
-  --status-pending: oklch(0.68 0.04 80);
-  --status-approved: oklch(0.70 0.14 152);
-  --status-rejected: oklch(0.68 0.18 27);
-  --status-news: oklch(0.76 0.13 58);
-
-  --platform-x: oklch(0.92 0.008 85);
-  --platform-linkedin: oklch(0.68 0.12 250);
-
-  --sidebar: oklch(0.215 0.008 75);
-  --sidebar-foreground: oklch(0.90 0.008 85);
-  --sidebar-primary: oklch(0.78 0.15 65);
-  --sidebar-primary-foreground: oklch(0.18 0.02 70);
-  --sidebar-accent: oklch(0.28 0.018 72);
-  --sidebar-accent-foreground: oklch(0.94 0.008 85);
-  --sidebar-border: oklch(1 0 0 / 12%);
-  --sidebar-ring: oklch(0.72 0.15 62);
+html[data-theme='dark'] {
+  color-scheme: dark;
 }
 
 @layer base {

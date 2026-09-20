@@ -18,7 +18,14 @@ export const SESSION_COOKIE = 'brandloop_session';
  * token — an unauthenticated visitor cannot load one, and letting the route
  * through would only produce a redirect after a failed API call.
  */
-export const PROTECTED_PREFIXES = ['/workspace', '/plans', '/drafts', '/settings', '/compose'] as const;
+export const PROTECTED_PREFIXES = [
+  '/workspace',
+  '/plans',
+  '/drafts',
+  '/billing',
+  '/settings',
+  '/compose',
+] as const;
 
 /** Routes a signed-in user should be redirected away from. */
 export const AUTH_ROUTES = ['/login', '/signup'] as const;

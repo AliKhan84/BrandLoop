@@ -1,6 +1,7 @@
 import { notFound, redirect } from 'next/navigation';
 
 import { CopyAndOpen } from '@/components/copy-and-open';
+import { CopyImageButton } from '@/components/copy-image-button';
 import { ApiError, getPost, getMe } from '@/lib/api';
 import { PLATFORM_LABELS, buildComposerLink, countCharacters, PLATFORM_LIMITS } from '@/lib/platform';
 import { getSessionToken } from '@/lib/session';
@@ -59,6 +60,12 @@ export default async function ComposePage({
   const length = countCharacters(text);
   const label = PLATFORM_LABELS[post.platform];
 
+  // Served through this dashboard's own origin rather than from the API's
+  // `imageUrl`. The browser can display the API's URL but cannot read it — no
+  // CORS — and reading the bytes is what the copy-to-clipboard path needs. See
+  // the route for the longer version.
+  const imageSrc = `/api/posts/${post.id}/image`;
+
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-10">
       <header className="flex flex-col gap-1">
@@ -110,12 +117,44 @@ export default async function ComposePage({
         <div className="border-border bg-card rounded-lg border p-4">
           <div className="prose-draft text-foreground select-all text-[0.9375rem]">{text}</div>
         </div>
+
+        {/* Inside the text section, not between the sections: with the image
+            below, a note that sat after `</section>` would read as a caption
+            for the picture. */}
+        {post.hashtags.length > 0 && (
+          <p className="text-muted-foreground text-xs leading-relaxed">
+            Hashtags are already included in the text above.
+          </p>
+        )}
       </section>
 
-      {post.hashtags.length > 0 && (
-        <p className="text-muted-foreground text-xs leading-relaxed">
-          Hashtags are already included in the text above.
-        </p>
+      {/* Below the text rather than beside it, because the order is the
+          instruction: the text is pasted first and the image second, and a
+          clipboard holds one thing at a time. */}
+      {(post.imageUrl || post.needsImage) && (
+        <section className="flex flex-col gap-3">
+          <h2 className="text-sm font-semibold tracking-tight">Image</h2>
+
+          {post.imageUrl ? (
+            <>
+              {/* eslint-disable-next-line @next/next/no-img-element -- our own same-origin route serves an image already sized for the platform; next/image would add an optimizer round-trip and needs the dimensions mirrored from the API for no gain */}
+              <img
+                src={imageSrc}
+                alt={`Illustration generated for this post`}
+                className="border-border w-full rounded-lg border"
+              />
+              <CopyImageButton
+                src={imageSrc}
+                filename={`${post.id}.jpg`}
+                platformLabel={label}
+              />
+            </>
+          ) : (
+            <p className="text-muted-foreground text-sm leading-relaxed">
+              {post.imageSkipReason ?? 'No image was generated for this post.'}
+            </p>
+          )}
+        </section>
       )}
     </main>
   );
