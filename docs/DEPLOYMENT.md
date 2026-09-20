@@ -140,6 +140,33 @@ Two things to know about the published images:
 - **They are `linux/amd64` only.** On an ARM host — Oracle's free tier, an
   M-series Mac — use `docker compose up -d --build`, which builds natively.
 
+### One-time setup in GitHub
+
+Two settings live in the repository's own configuration rather than in this file,
+and both are easy to forget because nothing fails loudly without them:
+
+**1. The Discord install link, as an Actions variable.**
+Settings → Secrets and variables → Actions → Variables → *New repository
+variable*:
+
+```
+NEXT_PUBLIC_DISCORD_INSTALL_URL = https://discord.com/oauth2/authorize?client_id=<your-app-id>&integration_type=1&scope=applications.commands
+```
+
+`<your-app-id>` is the same client id as `DISCORD_APP_ID` in `.env`. It is not a
+secret — it appears in every OAuth link the bot hands out.
+
+This is a **build** argument, so an image built without it has a button that goes
+nowhere: no error, no failing step, just a dead link. Compose reads the value
+from `.env` for local builds; the workflow reads it from the variable. After
+setting it, republish the images with Actions → *Publish images* → *Run workflow*
+— `workflow_dispatch` exists precisely so this does not need an empty commit.
+
+**2. Package visibility.**
+A new GHCR package is **private**, even though the repository is public. To let
+anyone pull without signing in, set it to public on the package's settings page
+under *Danger Zone → Change package visibility*.
+
 ### Configuration
 
 `.env` next to the compose file is the API container's environment — the whole
