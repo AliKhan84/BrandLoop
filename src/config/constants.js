@@ -207,6 +207,93 @@ export const QUOTAS = Object.freeze({
 export const MAX_REGENERATIONS_PER_POST = env.MAX_REGENERATIONS_PER_POST;
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Plans, roles and coupons
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Account roles.
+ *
+ * A string on the user document rather than a roles collection: there are two
+ * values and they change by hand. The JWT never carries a role — `requireAuth`
+ * re-reads the user on every request, so `requireAdmin` sees the current value
+ * and a demotion takes effect immediately rather than at token expiry.
+ */
+export const USER_ROLE = Object.freeze({
+  USER: 'user',
+  ADMIN: 'admin',
+});
+
+/** Subscription tiers. Stored on the user as `plan`. */
+export const PLAN_TIER = Object.freeze({
+  FREE: 'free',
+  CREATOR: 'creator',
+  PRO: 'pro',
+});
+
+/** What redeeming a coupon grants. */
+export const COUPON_KIND = Object.freeze({
+  /** A period of the Pro tier — the same thing the $10 plan buys. */
+  PRO: 'pro',
+  /** Every metered quota bypassed, for a period or forever. */
+  UNLIMITED: 'unlimited',
+});
+
+/**
+ * The plan catalog.
+ *
+ * ## Why the free tier reads env
+ *
+ * Free keeps the existing `QUOTA_*` values, so nothing about a current account's
+ * allowance changes when plans arrive. Creator and Pro are fixed here, because a
+ * published price has to mean a fixed quantity — a tier whose limits moved with
+ * a deployment's env would make the billing page a guess.
+ *
+ * These are the numbers the dashboard shows. It reads them from the API rather
+ * than repeating them, so a price and its limits cannot drift apart.
+ */
+export const PLANS = Object.freeze({
+  [PLAN_TIER.FREE]: Object.freeze({
+    tier: PLAN_TIER.FREE,
+    name: 'Free',
+    price: 0,
+    limits: Object.freeze({
+      [QUOTA_KEY.PLAN_GENERATIONS]: QUOTAS[QUOTA_KEY.PLAN_GENERATIONS].limit,
+      [QUOTA_KEY.NEWS_LOOKUPS]: QUOTAS[QUOTA_KEY.NEWS_LOOKUPS].limit,
+      [QUOTA_KEY.IMAGES]: QUOTAS[QUOTA_KEY.IMAGES].limit,
+    }),
+  }),
+  [PLAN_TIER.CREATOR]: Object.freeze({
+    tier: PLAN_TIER.CREATOR,
+    name: 'Creator',
+    price: 5,
+    limits: Object.freeze({
+      [QUOTA_KEY.PLAN_GENERATIONS]: 15,
+      [QUOTA_KEY.NEWS_LOOKUPS]: 10,
+      [QUOTA_KEY.IMAGES]: 30,
+    }),
+  }),
+  [PLAN_TIER.PRO]: Object.freeze({
+    tier: PLAN_TIER.PRO,
+    name: 'Pro',
+    price: 10,
+    limits: Object.freeze({
+      [QUOTA_KEY.PLAN_GENERATIONS]: 40,
+      [QUOTA_KEY.NEWS_LOOKUPS]: 20,
+      [QUOTA_KEY.IMAGES]: 100,
+    }),
+  }),
+});
+
+/**
+ * Days of Pro every new signup receives.
+ *
+ * A deliberate spend decision rather than a marketing default: Pro's ceilings
+ * are high, and image generation is the expensive call (~$0.04 each). Set it to
+ * 0 to switch the grant off.
+ */
+export const SIGNUP_TRIAL_DAYS = env.SIGNUP_TRIAL_DAYS;
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Images (Phase 3 — deferred; sizes retained so enabling it needs no edits)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -338,6 +425,11 @@ export default {
   QUOTA_PERIOD,
   QUOTAS,
   MAX_REGENERATIONS_PER_POST,
+  USER_ROLE,
+  PLAN_TIER,
+  COUPON_KIND,
+  PLANS,
+  SIGNUP_TRIAL_DAYS,
   IMAGE_SIZES,
   MEDIA_DIR,
   IMAGE_STYLE_SUFFIX,

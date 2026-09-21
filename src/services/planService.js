@@ -38,7 +38,7 @@ import { Post } from '../models/Post.js';
 import { generateContentPlan } from './ai/planGenerator.js';
 import { generatePost, resolveNewsStory } from './ai/postGenerator.js';
 import { generateImageForPost, IMAGE_SKIP_NOTES } from './ai/imageGenerator.js';
-import { consume } from './quotaService.js';
+import { consume, resolveLimit } from './quotaService.js';
 import { logGeneration, GENERATION_KIND } from './usageLogger.js';
 import { queuePostForApproval, refreshApprovalMessage } from './discord/approvalQueue.js';
 import { publishPost } from './publishing/index.js';
@@ -85,7 +85,14 @@ export async function createPlan({ userId, durationDays }) {
   }
 
   // Consume before generating — see the module note on ordering.
-  await consume({ userId, key: QUOTA_KEY.PLAN_GENERATIONS });
+  // The limit is resolved per user rather than read from the global quotas: a
+  // paid tier's allowance is a published number, and an unlimited grant bypasses
+  // the check entirely. See `resolveLimit`.
+  await consume({
+    userId,
+    key: QUOTA_KEY.PLAN_GENERATIONS,
+    limit: resolveLimit(user, QUOTA_KEY.PLAN_GENERATIONS),
+  });
 
   const started = Date.now();
   let result = null;
@@ -212,7 +219,11 @@ export async function generateSlot({ user, plan, slot, force = false }) {
   let news = null;
   if (slot.type === POST_TYPE.NEWS) {
     try {
-      await consume({ userId: user._id, key: QUOTA_KEY.NEWS_LOOKUPS });
+      await consume({
+        userId: user._id,
+        key: QUOTA_KEY.NEWS_LOOKUPS,
+        limit: resolveLimit(user, QUOTA_KEY.NEWS_LOOKUPS),
+      });
     } catch (err) {
       // Out of news lookups is not fatal: the slot degrades to a planned post,
       // which still fills the day. The alternative is a missing post.
@@ -357,7 +368,11 @@ async function attachImage({ post, user, skipped = [] }) {
   // here means no request was made, so it is noted on the post but not written
   // to `GenerationLog`: there is no AI call to record.
   try {
-    await consume({ userId: user._id, key: QUOTA_KEY.IMAGES });
+    await consume({
+      userId: user._id,
+      key: QUOTA_KEY.IMAGES,
+      limit: resolveLimit(user, QUOTA_KEY.IMAGES),
+    });
   } catch {
     logger.warn(
       `generateSlot: weekly image quota spent for user ${user._id} — ` +

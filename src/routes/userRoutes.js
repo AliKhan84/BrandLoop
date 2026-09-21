@@ -91,7 +91,9 @@ router.get('/me', (req, res) => {
  * @sideeffect none (read-only)
  */
 router.get('/me/usage', async (req, res) => {
-  const usage = await getUsageSummary({ userId: req.user._id });
+  // The user is passed through so the summary reflects their tier and any
+  // unlimited grant, rather than the deployment-wide defaults.
+  const usage = await getUsageSummary({ userId: req.user._id, user: req.user });
   res.json({ usage });
 });
 

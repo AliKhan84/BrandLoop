@@ -29,7 +29,7 @@ import { Usage } from '../src/models/Usage.js';
 import { GenerationLog } from '../src/models/GenerationLog.js';
 import { createPlan } from '../src/services/planService.js';
 import { generateLinkCode } from '../src/routes/linkCode.js';
-import { PLAN_STATUS } from '../src/config/constants.js';
+import { PLAN_STATUS, USER_ROLE } from '../src/config/constants.js';
 
 /** Demo account credentials. Deliberately obvious — this is not a real user. */
 const DEMO = Object.freeze({
@@ -92,6 +92,10 @@ async function upsertDemoUser() {
     // your email" banner in every screenshot with no way to clear it.
     user.emailVerified = true;
     user.emailVerifiedAt = user.emailVerifiedAt ?? new Date();
+    // Admin too, so the demo can open the admin area and create a coupon live.
+    // This is a demo-only choice: the account and its password are published in
+    // this file, so nothing real should ever run behind them.
+    user.role = USER_ROLE.ADMIN;
     await user.save();
     return user;
   }
@@ -105,6 +109,7 @@ async function upsertDemoUser() {
     defaultPlanDuration: DEMO.defaultPlanDuration,
     emailVerified: true,
     emailVerifiedAt: new Date(),
+    role: USER_ROLE.ADMIN,
   });
 
   await user.setPassword(DEMO.password);
@@ -167,6 +172,7 @@ async function main() {
   show('Input points', `${user.inputPoints.length} supplied`);
   show('Discord linked', user.discordUserId ? `yes (${user.discordUserId})` : 'no');
   show('Email verified', user.emailVerified ? 'yes' : 'no');
+  show('Role', user.role);
 
   console.log('\nDiscord link');
   show('Code', code);

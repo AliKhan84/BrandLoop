@@ -18,6 +18,8 @@ import mongoose from 'mongoose';
 import bcrypt from 'bcrypt';
 import {
   PLATFORM,
+  PLAN_TIER,
+  USER_ROLE,
   VALID_PLAN_DURATIONS,
   VALID_POST_FREQUENCIES,
 } from '../config/constants.js';
@@ -185,6 +187,62 @@ const userSchema = new Schema(
       select: false,
     },
 
+    // ── Plan and access ─────────────────────────────────────────────────────
+    /**
+     * What this account may do. `user` for everyone who signs up; `admin` is
+     * granted by hand (`npm run make-admin`) because the first admin cannot be
+     * created from the admin page.
+     */
+    role: {
+      type: String,
+      enum: Object.values(USER_ROLE),
+      default: USER_ROLE.USER,
+      index: true,
+    },
+
+    /** Subscription tier. Decides the per-quota limits `quotaService` resolves. */
+    plan: {
+      type: String,
+      enum: Object.values(PLAN_TIER),
+      default: PLAN_TIER.FREE,
+    },
+
+    /** When the current tier lapses. `null` means it does not. */
+    planExpiresAt: {
+      type: Date,
+      default: null,
+    },
+
+    /**
+     * Whether every metered quota is bypassed.
+     *
+     * A flag *and* a date, because "forever" and "until the 14th" are different
+     * grants, and `unlimitedUntil: null` alone would be ambiguous — it is also
+     * what a non-unlimited account has.
+     */
+    unlimited: {
+      type: Boolean,
+      default: false,
+    },
+
+    /** When the unlimited grant lapses. `null` while unlimited means forever. */
+    unlimitedUntil: {
+      type: Date,
+      default: null,
+    },
+
+    /** The last coupon this account redeemed, for support questions. */
+    couponCode: {
+      type: String,
+      default: null,
+    },
+
+    /** When the signup Pro grant was applied, so it is never applied twice. */
+    signupTrialAppliedAt: {
+      type: Date,
+      default: null,
+    },
+
     // ── Lifecycle ───────────────────────────────────────────────────────────
     /** Paused users keep their data but are skipped by the scheduler. */
     isActive: {
@@ -273,6 +331,17 @@ userSchema.methods.toPublicJSON = function toPublicJSON() {
     timezone: this.timezone,
     discordLinked: Boolean(this.discordUserId),
     emailVerified: this.emailVerified,
+    /**
+     * The caller's own role, plan and grants. Not secret — the dashboard needs
+     * them to decide whether to offer the admin area and what the quota meter
+     * should read. Nothing is authorised from a client-side copy: every check
+     * re-reads this document server-side.
+     */
+    role: this.role,
+    plan: this.plan,
+    planExpiresAt: this.planExpiresAt,
+    unlimited: Boolean(this.unlimited),
+    unlimitedUntil: this.unlimitedUntil,
     isActive: this.isActive,
     autoRenewPlan: this.autoRenewPlan,
     createdAt: this.createdAt,

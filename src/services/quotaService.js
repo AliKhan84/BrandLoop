@@ -26,7 +26,7 @@
  */
 
 import { Usage, computePeriodStart } from '../models/Usage.js';
-import { QUOTAS } from '../config/constants.js';
+import { PLANS, PLAN_TIER, QUOTAS } from '../config/constants.js';
 import { ApiError } from '../utils/ApiError.js';
 import { logger } from '../utils/logger.js';
 
@@ -48,6 +48,69 @@ function quotaConfig(key) {
 }
 
 /**
+ * Whether every quota is bypassed for this user right now.
+ *
+ * `unlimited` without a date means forever; with one, it means until then. Two
+ * fields rather than one because "forever" and "two weeks" are different
+ * grants, and a null date on its own cannot express both.
+ *
+ * @param {object|null} user - The user document.
+ * @param {Date} [now] - Reference time.
+ * @returns {boolean} True when the limits are bypassed.
+ * @sideeffect none (pure)
+ */
+export function isUnlimited(user, now = new Date()) {
+  if (!user?.unlimited) return false;
+  if (!user.unlimitedUntil) return true;
+  return user.unlimitedUntil > now;
+}
+
+/**
+ * Resolves the limit that actually applies to this user for this quota.
+ *
+ * WHY THIS IS NOT JUST `QUOTAS[key].limit`: the free tier's allowance is the
+ * deployment's env value, but a paid tier's is a published number that must not
+ * move with an env edit — and an unlimited grant bypasses both. One function
+ * decides, so no caller has to remember the three cases.
+ *
+ * @param {object|null} user - The user document.
+ * @param {string} key - A quota key from `QUOTA_KEY`.
+ * @param {Date} [now] - Reference time.
+ * @returns {number} The limit, or `Infinity` when unlimited.
+ * @throws {Error} When the key is not a configured quota.
+ * @sideeffect none (pure)
+ */
+export function resolveLimit(user, key, now = new Date()) {
+  const { limit: environmentLimit } = quotaConfig(key);
+
+  if (isUnlimited(user, now)) return Infinity;
+
+  const tierLimit = PLANS[activeTier(user, now)]?.limits?.[key];
+
+  return typeof tierLimit === 'number' ? tierLimit : environmentLimit;
+}
+
+/**
+ * The tier a user is actually on right now.
+ *
+ * WHY THIS IS NOT JUST `user.plan`: a plan has an end date, and a lapsed Pro
+ * account must fall back to the free limits rather than keep its high ceilings
+ * because nobody cleared the field. Everything that reports or enforces a limit
+ * goes through this, so the meter and the enforcement cannot disagree.
+ *
+ * @param {object|null} user - The user document.
+ * @param {Date} [now] - Reference time.
+ * @returns {string} One of `PLAN_TIER`.
+ * @sideeffect none (pure)
+ */
+export function activeTier(user, now = new Date()) {
+  const plan = user?.plan;
+  if (!plan || !PLANS[plan]) return PLAN_TIER.FREE;
+  if (user.planExpiresAt && user.planExpiresAt <= now) return PLAN_TIER.FREE;
+  return plan;
+}
+
+/**
  * Reads current usage for a quota without modifying it.
  *
  * Used for reporting and for pre-flight checks where the caller wants to warn
@@ -61,17 +124,25 @@ function quotaConfig(key) {
  *   The current state of the bucket.
  * @sideeffect none (read-only)
  */
-export async function getUsage({ userId, key, now = new Date() }) {
-  const { limit, period } = quotaConfig(key);
+export async function getUsage({ userId, key, now = new Date(), user = null }) {
+  const { period } = quotaConfig(key);
+  const limit = user ? resolveLimit(user, key, now) : quotaConfig(key).limit;
   const periodStart = computePeriodStart(period, now);
 
   const row = await Usage.findOne({ userId, key, periodStart }).lean();
   const used = row?.count ?? 0;
 
+  // An unlimited account has no meaningful ceiling, so the limit and the
+  // remainder are reported as null rather than as `Infinity` — which does not
+  // survive JSON, and would reach the dashboard as `null` anyway but without
+  // saying why.
+  const unlimited = limit === Infinity;
+
   return {
     used,
-    limit,
-    remaining: Math.max(0, limit - used),
+    limit: unlimited ? null : limit,
+    remaining: unlimited ? null : Math.max(0, limit - used),
+    unlimited,
     periodStart,
     period,
   };
@@ -92,32 +163,41 @@ export async function getUsage({ userId, key, now = new Date() }) {
  *   *not* incremented in that case, so repeated refusals do not inflate it.
  * @sideeffect Writes to the database.
  */
-export async function consume({ userId, key, now = new Date() }) {
-  const { limit, period } = quotaConfig(key);
+export async function consume({ userId, key, now = new Date(), limit = null }) {
+  const { period } = quotaConfig(key);
+  const resolvedLimit = limit ?? quotaConfig(key).limit;
   const periodStart = computePeriodStart(period, now);
 
   // Reserve the unit first, then check. Incrementing before comparing means a
   // refusal costs one unit — but doing it the other way round would allow two
   // concurrent callers to both pass the check and both spend.
+  //
+  // A `limit` of Infinity never refuses, and still records the spend: the usage
+  // history is what the cost report reads, so an unlimited account must not look
+  // like an idle one.
   const { count } = await Usage.increment({ userId, key, periodStart });
 
-  // The claim exceeded the limit, so give it back. A refund keeps the stored
-  // count honest, which matters because this collection is also the usage
-  // history the cost report reads from.
-  if (count > limit) {
+  if (count > resolvedLimit) {
     await Usage.updateOne({ userId, key, periodStart }, { $inc: { count: -1 } });
 
-    logger.warn(`quota: ${key} exhausted for user ${userId} (${count - 1}/${limit})`);
+    logger.warn(`quota: ${key} exhausted for user ${userId} (${count - 1}/${resolvedLimit})`);
 
     throw ApiError.tooManyRequests(
       `You have reached your ${key} limit for this ${period}.`,
-      { key, limit, period, resetsAt: nextPeriodStart(period, now) },
+      { key, limit: resolvedLimit, period, resetsAt: nextPeriodStart(period, now) },
     );
   }
 
-  logger.debug(`quota: ${key} ${count}/${limit} for user ${userId}`);
+  logger.debug(
+    `quota: ${key} ${count}/${resolvedLimit === Infinity ? 'unlimited' : resolvedLimit} for user ${userId}`,
+  );
 
-  return { used: count, limit, remaining: Math.max(0, limit - count) };
+  return {
+    used: count,
+    limit: resolvedLimit === Infinity ? null : resolvedLimit,
+    remaining: resolvedLimit === Infinity ? null : Math.max(0, resolvedLimit - count),
+    unlimited: resolvedLimit === Infinity,
+  };
 }
 
 /**
@@ -152,18 +232,27 @@ export function nextPeriodStart(period, now = new Date()) {
  *   One entry per configured quota.
  * @sideeffect none (read-only)
  */
-export async function getUsageSummary({ userId }) {
+export async function getUsageSummary({ userId, user = null }) {
   const keys = Object.keys(QUOTAS);
 
   // Parallel reads: the buckets are independent and this is a reporting path.
   const entries = await Promise.all(
     keys.map(async (key) => {
-      const usage = await getUsage({ userId, key });
-      return [key, { used: usage.used, limit: usage.limit, remaining: usage.remaining, period: usage.period }];
+      const usage = await getUsage({ userId, key, user });
+      return [
+        key,
+        {
+          used: usage.used,
+          limit: usage.limit,
+          remaining: usage.remaining,
+          unlimited: usage.unlimited,
+          period: usage.period,
+        },
+      ];
     }),
   );
 
   return Object.fromEntries(entries);
 }
 
-export default { consume, getUsage, getUsageSummary, nextPeriodStart };
+export default { consume, getUsage, getUsageSummary, nextPeriodStart, resolveLimit, isUnlimited, activeTier };

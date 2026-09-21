@@ -17,6 +17,7 @@
 
 import jwt from 'jsonwebtoken';
 import { env } from '../config/env.js';
+import { USER_ROLE } from '../config/constants.js';
 import { ApiError } from '../utils/ApiError.js';
 import { User } from '../models/User.js';
 
@@ -99,4 +100,33 @@ export async function requireAuth(req, res, next) {
   return next();
 }
 
-export default { requireAuth, signToken };
+/**
+ * Requires the authenticated user to be an admin.
+ *
+ * MUST RUN AFTER `requireAuth`, which is what loads `req.user`. It checks the
+ * role on the freshly-read document rather than on anything from the token, so
+ * the decision is never made from a value the client supplied — and a demotion
+ * takes effect on the next request rather than when the token expires.
+ *
+ * @param {import('express').Request} req - Must already have been through `requireAuth`.
+ * @param {import('express').Response} res - The response.
+ * @param {import('express').NextFunction} next - The next handler.
+ * @returns {void}
+ * @sideeffect none
+ */
+export function requireAdmin(req, res, next) {
+  if (!req.user) {
+    // A programming error rather than a client one: it means the route was
+    // mounted without `requireAuth` in front of it. Failing closed would hide
+    // that, so it is reported as a server fault.
+    return next(ApiError.internal('requireAdmin ran without requireAuth.'));
+  }
+
+  if (req.user.role !== USER_ROLE.ADMIN) {
+    return next(ApiError.forbidden('This action is restricted to administrators.'));
+  }
+
+  return next();
+}
+
+export default { requireAuth, requireAdmin, signToken };

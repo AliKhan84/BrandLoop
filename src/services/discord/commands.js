@@ -232,15 +232,21 @@ async function handleStatus(interaction) {
   }
 
   const [usage, plan, pendingCount] = await Promise.all([
-    getUsageSummary({ userId: user._id }),
+    getUsageSummary({ userId: user._id, user }),
     ContentPlan.findOne({ userId: user._id, status: PLAN_STATUS.APPROVED }).sort({ createdAt: -1 }),
     Post.countDocuments({ userId: user._id, status: POST_STATUS.PENDING_APPROVAL }),
   ]);
 
-  /** Formats a quota entry as "used/limit period". */
+  /**
+   * Formats a quota entry as "used/limit period".
+   *
+   * An unlimited account reports a null limit — a ceiling that does not exist
+   * cannot be printed as a number, and "3/null" would read as a bug.
+   */
   const quotaLine = (key, label) => {
     const entry = usage[key];
     if (!entry) return `${label}: —`;
+    if (entry.unlimited) return `${label}: **${entry.used}** this ${entry.period} (unlimited)`;
     return `${label}: **${entry.used}/${entry.limit}** this ${entry.period}`;
   };
 

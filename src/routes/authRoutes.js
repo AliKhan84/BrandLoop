@@ -30,7 +30,7 @@ import { generateLinkCode } from './linkCode.js';
 import { issueVerification, consumeVerification, loadForResend } from '../services/email/verification.js';
 import { resendAllowedAt } from '../utils/emailToken.js';
 import { ApiError } from '../utils/ApiError.js';
-import { VALID_POST_FREQUENCIES, VALID_PLAN_DURATIONS } from '../config/constants.js';
+import { VALID_POST_FREQUENCIES, VALID_PLAN_DURATIONS, PLAN_TIER, SIGNUP_TRIAL_DAYS } from '../config/constants.js';
 import { env } from '../config/env.js';
 import { logger } from '../utils/logger.js';
 
@@ -95,9 +95,23 @@ router.post('/register', validateBody(registerSchema), async (req, res) => {
   });
 
   await user.setPassword(password);
+
+  // Every new account starts on Pro for `SIGNUP_TRIAL_DAYS`. Applied here rather
+  // than as a schema default so the grant is visible in the code that creates
+  // the account, and so setting the env value to 0 switches it off cleanly
+  // instead of leaving a half-applied rule behind.
+  if (SIGNUP_TRIAL_DAYS > 0) {
+    user.plan = PLAN_TIER.PRO;
+    user.planExpiresAt = new Date(Date.now() + SIGNUP_TRIAL_DAYS * 24 * 60 * 60 * 1000);
+    user.signupTrialAppliedAt = new Date();
+  }
+
   await user.save();
 
-  logger.info(`Registered user ${user._id} (${email})`);
+  logger.info(
+    `Registered user ${user._id} (${email})` +
+      (SIGNUP_TRIAL_DAYS > 0 ? ` — ${SIGNUP_TRIAL_DAYS} days of Pro` : ''),
+  );
 
   // Sent after the account exists, and never fatal: a mail server that is down
   // must not cost someone their signup, so `issueVerification` reports rather

@@ -152,6 +152,10 @@ const envSchema = z.object({
   QUOTA_NEWS_LOOKUPS_PER_DAY: z.coerce.number().int().positive().default(2),
   QUOTA_IMAGES_PER_WEEK: z.coerce.number().int().positive().default(5),
   MAX_REGENERATIONS_PER_POST: z.coerce.number().int().positive().default(3),
+  // Days of the Pro tier granted to every new signup. Zero disables the grant —
+  // worth knowing before an open signup link is shared, because Pro's limits are
+  // high and images are the expensive call.
+  SIGNUP_TRIAL_DAYS: z.coerce.number().int().nonnegative().default(30),
 
   // ── Platform limits ──────────────────────────────────────────────────────
   X_CHAR_LIMIT: z.coerce.number().int().positive().default(280),
