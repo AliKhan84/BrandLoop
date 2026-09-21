@@ -156,6 +156,9 @@ const envSchema = z.object({
   // worth knowing before an open signup link is shared, because Pro's limits are
   // high and images are the expensive call.
   SIGNUP_TRIAL_DAYS: z.coerce.number().int().nonnegative().default(30),
+  // Feedback messages per day. Nothing is paid for, but an unbounded writer is
+  // an inbox nobody will read.
+  QUOTA_FEEDBACK_PER_DAY: z.coerce.number().int().positive().default(5),
 
   // ── Platform limits ──────────────────────────────────────────────────────
   X_CHAR_LIMIT: z.coerce.number().int().positive().default(280),

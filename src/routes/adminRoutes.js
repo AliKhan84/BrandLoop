@@ -16,11 +16,13 @@
  */
 
 import { Router } from 'express';
+import mongoose from 'mongoose';
 import { z } from 'zod';
 
 import { requireAdmin, requireAuth } from '../middleware/auth.js';
 import { validateBody } from '../middleware/validate.js';
 import { COUPON_KIND } from '../config/constants.js';
+import { Feedback, FEEDBACK_STATUS } from '../models/Feedback.js';
 import { createCoupon, listCoupons, setCouponActive } from '../services/couponService.js';
 
 const router = Router();
@@ -87,6 +89,56 @@ router.patch('/coupons/:id', validateBody(updateCouponSchema), async (req, res) 
     isActive: req.body.isActive,
   });
   res.json({ coupon: coupon.toPublicJSON() });
+});
+
+/** Feedback update payload. */
+const updateFeedbackSchema = z.object({
+  status: z.enum(Object.values(FEEDBACK_STATUS)),
+  adminNote: z.string().trim().max(500).optional().default(''),
+});
+
+/**
+ * GET /api/admin/feedback — every message, newest first.
+ *
+ * Capped rather than paged: this is an academic deployment's inbox, and a cap
+ * that is visible in the response is more honest than a "load more" that never
+ * gets built.
+ */
+router.get('/feedback', async (req, res) => {
+  const rows = await Feedback.find().sort({ createdAt: -1 }).limit(200);
+  res.json({ feedback: rows.map((row) => row.toPublicJSON()) });
+});
+
+/**
+ * PATCH /api/admin/feedback/:id — moves a message through the reading workflow.
+ *
+ * @param {import('express').Request} req - Validated body.
+ * @param {import('express').Response} res - Responds 200 with the message.
+ * @returns {Promise<void>}
+ * @throws {ApiError} 404 when there is no such message.
+ * @sideeffect Updates a feedback document.
+ */
+router.patch('/feedback/:id', validateBody(updateFeedbackSchema), async (req, res) => {
+  // Guarded before the query for the same reason as the coupon toggle: a
+  // malformed id makes Mongoose throw, and a 500 is the wrong answer for a bad
+  // reference.
+  if (!mongoose.isValidObjectId(req.params.id)) {
+    res.status(404).json({ error: 'NotFound', message: 'No such message.' });
+    return;
+  }
+
+  const feedback = await Feedback.findByIdAndUpdate(
+    req.params.id,
+    { status: req.body.status, adminNote: req.body.adminNote },
+    { new: true },
+  );
+
+  if (!feedback) {
+    res.status(404).json({ error: 'NotFound', message: 'No such message.' });
+    return;
+  }
+
+  res.json({ feedback: feedback.toPublicJSON() });
 });
 
 export default router;

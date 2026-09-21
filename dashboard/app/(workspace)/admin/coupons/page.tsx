@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
 import { AdminCouponPanel } from '@/components/admin-coupon-panel';
@@ -38,7 +39,11 @@ export default async function AdminCouponsPage() {
         <h1 className="text-xl font-semibold tracking-tight">Coupons</h1>
         <p className="text-muted-foreground text-sm">
           Codes anyone can redeem from the billing page. An unlimited code bypasses every metered
-          quota; a Pro code grants the Pro tier for a period.
+          quota; a Pro code grants the Pro tier for a period. The{' '}
+          <Link href="/admin/feedback" className="text-primary font-medium underline-offset-4 hover:underline">
+            feedback inbox
+          </Link>{' '}
+          is the other admin page.
         </p>
       </header>
 

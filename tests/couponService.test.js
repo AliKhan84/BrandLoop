@@ -184,22 +184,25 @@ describe('computeGrant', () => {
 });
 
 describe('the plan catalog', () => {
-  test('the free tier keeps the deployment’s own quota values', () => {
+  test('the free tier prices exactly the buckets that cost money', () => {
     // Nothing about an existing account's allowance may change when plans
-    // arrive, so free must mirror the env-driven quotas rather than restate them.
-    const free = PLANS[PLAN_TIER.FREE].limits;
-    const configured = Object.keys(free);
-    assert.deepEqual(configured.sort(), Object.values(QUOTA_KEY).sort());
-    for (const key of configured) {
-      assert.equal(typeof free[key], 'number');
-    }
+    // arrive, so free mirrors the env-driven quotas. Feedback is metered as
+    // well, but it is not a plan feature — nothing is paid for, so it must not
+    // appear in a tier's limits.
+    const priced = Object.keys(PLANS[PLAN_TIER.FREE].limits).sort();
+
+    assert.deepEqual(priced, ['images', 'newsLookups', 'planGenerations']);
+    assert.ok(
+      !priced.includes(QUOTA_KEY.FEEDBACK),
+      'feedback is a rate limit, not something a plan sells',
+    );
   });
 
-  test('paid tiers advertise more than free on every bucket', () => {
+  test('paid tiers advertise more than free on every priced bucket', () => {
     // The billing page shows these numbers as a promise, so a tier that is worse
     // than free anywhere would be advertising something untrue.
     for (const tier of [PLAN_TIER.CREATOR, PLAN_TIER.PRO]) {
-      for (const key of Object.values(QUOTA_KEY)) {
+      for (const key of Object.keys(PLANS[PLAN_TIER.FREE].limits)) {
         assert.ok(
           PLANS[tier].limits[key] > PLANS[PLAN_TIER.FREE].limits[key],
           `${tier}.${key} must exceed free`,

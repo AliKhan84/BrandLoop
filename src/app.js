@@ -32,6 +32,7 @@ import planRoutes from './routes/planRoutes.js';
 import postRoutes from './routes/postRoutes.js';
 import couponRoutes from './routes/couponRoutes.js';
 import billingRoutes from './routes/billingRoutes.js';
+import feedbackRoutes from './routes/feedbackRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import devRoutes from './routes/devRoutes.js';
 
@@ -103,6 +104,7 @@ export function createApp() {
   app.use('/api/posts', postRoutes);
   app.use('/api/coupons', couponRoutes);
   app.use('/api/billing', billingRoutes);
+  app.use('/api/feedback', feedbackRoutes);
   // Admin routes carry their own role guard, applied on the router.
   app.use('/api/admin', adminRoutes);
   // The dev router gates itself on DEV_TOOLS_ENABLED before doing anything.

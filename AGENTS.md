@@ -73,10 +73,16 @@ five bugs found only by running the thing end to end.
 - Slot editing (angle + planned/news) before generation.
 - Draft editing from the dashboard, sharing one service with the Discord modal.
 - Discord linking with polling.
-- `/billing` — the plans page (Free / Creator / Pro). **UI only by design:** no
-  checkout, no plan stored on the user, and the API still enforces the free
-  tier's quotas for everyone. The free card's numbers are the real `QUOTA_*`
-  defaults, so the page cannot advertise a ceiling the product does not honour.
+- `/billing` — the plans page (Free / Creator / Pro). **No checkout:** no card,
+  no payment provider, and the buttons stay disabled. A tier is real though —
+  every signup gets 30 days of Pro, a coupon can grant Pro or unlimited usage,
+  and the numbers on the cards are read from `/api/billing` rather than kept as
+  literals here, so a card cannot advertise a ceiling the API does not enforce.
+- `/feedback` and `/admin/coupons`, `/admin/feedback` — the feedback form and the
+  two admin pages. The admin pages are guarded three deep: `proxy.ts` wants a
+  cookie, the page calls `notFound()` for a non-admin, and the API returns 403
+  regardless. `/api/admin/*` is the only router with `requireAdmin` on the router
+  itself.
 - Brand: `public/BrandLoop-logo.png`. The file is RGB with **no alpha channel**
   and has the wordmark inside it, so it is drawn as a rounded tile
   (`components/brand-logo.tsx`) beside a real text label. Do not drop the raw

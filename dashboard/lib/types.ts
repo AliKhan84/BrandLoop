@@ -260,3 +260,25 @@ export interface GenerateResult {
   /** Reasons why a platform was skipped, e.g. an exhausted news quota. */
   skipped: string[];
 }
+
+/** What kind of message feedback is. */
+export type FeedbackCategory = 'bug' | 'idea' | 'praise' | 'other';
+
+/** Where a message sits in the reading workflow. */
+export type FeedbackStatus = 'new' | 'read' | 'archived';
+
+/** A message from a user, as `/api/feedback` and the admin inbox see it. */
+export interface Feedback {
+  id: string;
+  userId: string;
+  email: string;
+  category: FeedbackCategory;
+  /** 1–5, or null when the sender did not rate. Null is not zero. */
+  rating: number | null;
+  message: string;
+  /** The screen it was sent from, so a bug report has context. */
+  page: string;
+  status: FeedbackStatus;
+  adminNote: string;
+  createdAt: string;
+}

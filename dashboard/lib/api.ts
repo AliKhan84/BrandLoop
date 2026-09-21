@@ -6,6 +6,9 @@ import type {
   ContentPlanSummary,
   Coupon,
   CouponKind,
+  Feedback,
+  FeedbackCategory,
+  FeedbackStatus,
   GenerateResult,
   LinkCode,
   Platform,
@@ -364,6 +367,74 @@ export async function setCouponActive(
     body: { isActive },
   });
   return coupon;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Feedback
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Sends a message about the product.
+ *
+ * @param token - The session JWT.
+ * @param input - Category, optional rating, the message, and the screen it came from.
+ * @returns The stored message.
+ * @throws {ApiError} 429 when the daily feedback allowance is spent.
+ * @sideeffect Writes a feedback document.
+ */
+export async function submitFeedback(
+  token: string,
+  input: {
+    category: FeedbackCategory;
+    rating: number | null;
+    message: string;
+    page: string;
+  },
+): Promise<Feedback> {
+  const { feedback } = await request<{ feedback: Feedback }>('/api/feedback', {
+    method: 'POST',
+    token,
+    body: input,
+  });
+  return feedback;
+}
+
+/**
+ * Lists every message. Admin only.
+ *
+ * @param token - The session JWT.
+ * @returns Messages, newest first.
+ * @throws {ApiError} 403 when the caller is not an administrator.
+ * @sideeffect none (read-only)
+ */
+export async function listFeedback(token: string): Promise<Feedback[]> {
+  const { feedback } = await request<{ feedback: Feedback[] }>('/api/admin/feedback', { token });
+  return feedback;
+}
+
+/**
+ * Moves a message through the reading workflow. Admin only.
+ *
+ * @param token - The session JWT.
+ * @param feedbackId - The message to update.
+ * @param status - The new status.
+ * @param adminNote - A note for the next reader.
+ * @returns The updated message.
+ * @throws {ApiError} 404 when there is no such message.
+ * @sideeffect Updates a feedback document.
+ */
+export async function setFeedbackStatus(
+  token: string,
+  feedbackId: string,
+  status: FeedbackStatus,
+  adminNote = '',
+): Promise<Feedback> {
+  const { feedback } = await request<{ feedback: Feedback }>(`/api/admin/feedback/${feedbackId}`, {
+    method: 'PATCH',
+    token,
+    body: { status, adminNote },
+  });
+  return feedback;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

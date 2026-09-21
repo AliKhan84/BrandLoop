@@ -175,6 +175,9 @@ export const QUOTA_KEY = Object.freeze({
   PLAN_GENERATIONS: 'planGenerations',
   NEWS_LOOKUPS: 'newsLookups',
   IMAGES: 'images',
+  // Feedback is metered for a different reason to the others: nothing is paid
+  // for, but an unbounded writer is an inbox nobody will read.
+  FEEDBACK: 'feedback',
 });
 
 /**
@@ -200,6 +203,10 @@ export const QUOTAS = Object.freeze({
   [QUOTA_KEY.IMAGES]: Object.freeze({
     limit: env.QUOTA_IMAGES_PER_WEEK,
     period: QUOTA_PERIOD.WEEK,
+  }),
+  [QUOTA_KEY.FEEDBACK]: Object.freeze({
+    limit: env.QUOTA_FEEDBACK_PER_DAY,
+    period: QUOTA_PERIOD.DAY,
   }),
 });
 

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { CreditCard, FileText, LayoutGrid, Settings, ShieldCheck } from 'lucide-react';
+import { CreditCard, FileText, LayoutGrid, MessageSquare, Settings, ShieldCheck } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import type { UserRole } from '@/lib/types';
@@ -19,6 +19,7 @@ const NAV_ITEMS = [
   { href: '/workspace', label: 'Workspace', icon: LayoutGrid },
   { href: '/drafts', label: 'Drafts', icon: FileText },
   { href: '/billing', label: 'Billing', icon: CreditCard },
+  { href: '/feedback', label: 'Feedback', icon: MessageSquare },
   { href: '/settings', label: 'Settings', icon: Settings },
 ] as const;
 

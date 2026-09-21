@@ -114,6 +114,8 @@ a bearer JWT. Public routes are `/health`, `/api/auth/register`,
 | `POST` | `/api/auth/login` | Sign in; returns a JWT |
 | `POST` | `/api/auth/discord/link-code` | Six-digit code to redeem with `/connect` in Discord |
 | `GET` | `/api/auth/options` | Option lists for the signup form |
+| `POST` | `/api/auth/verify-email` | Redeem the token from a verification link (public — the token is the credential) |
+| `POST` | `/api/auth/resend-verification` | Send a fresh link, inside a per-account cooldown |
 | `GET` | `/api/users/me` | The signed-in profile |
 | `PATCH` | `/api/users/me` | Update the profile; every field is optional |
 | `GET` | `/api/users/me/usage` | Quota usage, per bucket |
@@ -126,6 +128,13 @@ a bearer JWT. Public routes are `/health`, `/api/auth/register`,
 | `DELETE` | `/api/plans/:id` | Delete a plan |
 | `GET` | `/api/posts` | Drafts and published posts |
 | `GET` | `/api/posts/:id` | One post |
+| `GET` | `/api/billing` | The plan catalog plus this account's tier and grants |
+| `POST` | `/api/coupons/redeem` | Apply a coupon code to your account |
+| `POST` | `/api/feedback` | Send feedback (rate limited per account) |
+| `GET`/`POST` | `/api/admin/coupons` | Admin only: list and create coupon codes |
+| `PATCH` | `/api/admin/coupons/:id` | Admin only: enable or disable a code |
+| `GET` | `/api/admin/feedback` | Admin only: the feedback inbox |
+| `PATCH` | `/api/admin/feedback/:id` | Admin only: mark a message read, archived or new |
 | `PATCH` | `/api/posts/:id` | Edit a post's text (the dashboard's editor) |
 | `GET` | `/media/:file` | Generated images |
 | `POST` | `/api/dev/*` | Manual triggers for demos — enabled outside production only |

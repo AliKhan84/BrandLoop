@@ -285,6 +285,87 @@ export async function setCouponActiveAction(
 }
 
 /**
+ * Sends feedback about the product.
+ *
+ * The page is stamped by the caller rather than read from the request: a Server
+ * Action has no reliable access to the URL the form was rendered on, and asking
+ * the user which screen they were on would be a question with an obvious answer.
+ *
+ * @param _prev - Previous form state.
+ * @param formData - The submitted form.
+ * @returns Form state, with a thank-you on success.
+ * @sideeffect Writes a feedback document through the API.
+ */
+export async function submitFeedbackAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const token = await getSessionToken();
+  if (!token) return { error: 'Your session has ended. Please sign in again.' };
+
+  const rawRating = String(formData.get('rating') ?? '').trim();
+  const category = String(formData.get('category') ?? 'idea');
+  const allowed = ['bug', 'idea', 'praise', 'other'] as const;
+  type Category = (typeof allowed)[number];
+
+  const message = String(formData.get('message') ?? '').trim();
+  if (message.length < 5) {
+    return {
+      error: 'Please write a little more.',
+      fieldErrors: { message: 'Please write a little more.' },
+    };
+  }
+
+  try {
+    await api.submitFeedback(token, {
+      category: (allowed.includes(category as Category) ? category : 'idea') as Category,
+      // Empty means "not rated" — a default of 3 would record a rating nobody
+      // gave and skew anything computed from the column.
+      rating: rawRating ? Number(rawRating) : null,
+      message,
+      page: String(formData.get('page') ?? '').trim(),
+    });
+
+    revalidatePath('/feedback');
+    return { error: null, success: 'Thank you — that is genuinely useful.' };
+  } catch (err) {
+    return toActionState(err);
+  }
+}
+
+/**
+ * Moves a feedback message through the reading workflow. Admin only.
+ *
+ * @param _prev - Previous form state.
+ * @param formData - The submitted form, carrying `feedbackId` and `status`.
+ * @returns Form state.
+ * @sideeffect Updates a feedback document through the API.
+ */
+export async function setFeedbackStatusAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const token = await getSessionToken();
+  if (!token) return { error: 'Your session has ended. Please sign in again.' };
+
+  const feedbackId = String(formData.get('feedbackId') ?? '');
+  const status = String(formData.get('status') ?? 'read');
+
+  try {
+    const updated = await api.setFeedbackStatus(
+      token,
+      feedbackId,
+      status === 'archived' ? 'archived' : status === 'new' ? 'new' : 'read',
+      String(formData.get('adminNote') ?? '').trim(),
+    );
+    revalidatePath('/admin/feedback');
+    return { error: null, success: `Marked ${updated.status}.` };
+  } catch (err) {
+    return toActionState(err);
+  }
+}
+
+/**
  * Saves profile changes from the settings form.
  *
  * @param _prev - Previous form state, supplied by `useActionState`.
