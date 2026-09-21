@@ -85,7 +85,7 @@ export function SidebarNav({ role }: { role: UserRole }) {
               'focus-visible:outline-2 focus-visible:outline-offset-2',
               active
                 ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                : 'text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-foreground',
+                : 'text-sidebar-foreground-muted hover:bg-sidebar-accent/60 hover:text-sidebar-foreground',
             )}
           >
             <Icon className="size-4 shrink-0" aria-hidden="true" />
@@ -137,7 +137,7 @@ export function BottomNav({ role }: { role: UserRole }) {
                 aria-current={active ? 'page' : undefined}
                 className={cn(
                   'flex min-h-[56px] flex-col items-center justify-center gap-1 text-xs font-medium transition-colors',
-                  active ? 'text-primary' : 'text-muted-foreground',
+                  active ? 'text-primary' : 'text-sidebar-foreground-muted',
                 )}
               >
                 <Icon className="size-5" aria-hidden="true" />
