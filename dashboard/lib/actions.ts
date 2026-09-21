@@ -179,6 +179,112 @@ export async function resendVerificationAction(): Promise<ActionState> {
 }
 
 /**
+ * Redeems a coupon code for the signed-in account.
+ *
+ * The success message names what was granted, because "Redeemed" alone leaves
+ * the user to go and check whether it worked.
+ *
+ * @param _prev - Previous form state, supplied by `useActionState`.
+ * @param formData - The submitted form, carrying `code`.
+ * @returns Form state describing what happened.
+ * @sideeffect Applies the grant through the API.
+ */
+export async function redeemCouponAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const token = await getSessionToken();
+  if (!token) return { error: 'Your session has ended. Please sign in again.' };
+
+  const code = String(formData.get('code') ?? '').trim();
+  if (!code) return { error: 'Enter a code.', fieldErrors: { code: 'Enter a code.' } };
+
+  try {
+    const result = await api.redeemCoupon(token, code);
+
+    // The quota meter and the plan cards both read the account, so the whole
+    // shell is revalidated rather than just this page.
+    revalidatePath('/', 'layout');
+
+    const grant = result.account.unlimited
+      ? result.account.unlimitedUntil
+        ? `Unlimited until ${new Date(result.account.unlimitedUntil).toLocaleDateString()}.`
+        : 'Unlimited access, with no end date.'
+      : result.account.planExpiresAt
+        ? `${result.account.plan} until ${new Date(result.account.planExpiresAt).toLocaleDateString()}.`
+        : `${result.account.plan}, with no end date.`;
+
+    return { error: null, success: `${result.redeemed.code} applied — ${grant}` };
+  } catch (err) {
+    return toActionState(err);
+  }
+}
+
+/**
+ * Creates a coupon. Admin only.
+ *
+ * @param _prev - Previous form state.
+ * @param formData - The submitted form.
+ * @returns Form state, with the generated code in the success message when the
+ *   operator left the code field empty.
+ * @sideeffect Writes a coupon through the API.
+ */
+export async function createCouponAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const token = await getSessionToken();
+  if (!token) return { error: 'Your session has ended. Please sign in again.' };
+
+  const rawDuration = String(formData.get('durationDays') ?? '').trim();
+  const rawMax = String(formData.get('maxRedemptions') ?? '').trim();
+
+  try {
+    const coupon = await api.createCoupon(token, {
+      code: String(formData.get('code') ?? '').trim() || undefined,
+      kind: String(formData.get('kind') ?? 'pro') === 'unlimited' ? 'unlimited' : 'pro',
+      // Empty means "no limit" for both of these — the schema treats null as
+      // forever/no-cap, so an empty field must not become 0.
+      durationDays: rawDuration ? Number(rawDuration) : null,
+      maxRedemptions: rawMax ? Number(rawMax) : null,
+      note: String(formData.get('note') ?? '').trim(),
+    });
+
+    revalidatePath('/admin/coupons');
+    return { error: null, success: `Created ${coupon.code}.` };
+  } catch (err) {
+    return toActionState(err);
+  }
+}
+
+/**
+ * Enables or disables a coupon. Admin only.
+ *
+ * @param _prev - Previous form state.
+ * @param formData - The submitted form, carrying `couponId` and `isActive`.
+ * @returns Form state.
+ * @sideeffect Updates a coupon through the API.
+ */
+export async function setCouponActiveAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const token = await getSessionToken();
+  if (!token) return { error: 'Your session has ended. Please sign in again.' };
+
+  const couponId = String(formData.get('couponId') ?? '');
+  const isActive = String(formData.get('isActive') ?? '') === 'true';
+
+  try {
+    const coupon = await api.setCouponActive(token, couponId, isActive);
+    revalidatePath('/admin/coupons');
+    return { error: null, success: `${coupon.code} ${isActive ? 'enabled' : 'disabled'}.` };
+  } catch (err) {
+    return toActionState(err);
+  }
+}
+
+/**
  * Saves profile changes from the settings form.
  *
  * @param _prev - Previous form state, supplied by `useActionState`.

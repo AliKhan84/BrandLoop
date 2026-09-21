@@ -56,6 +56,14 @@ export interface User {
    * this — see the note in `src/services/email/verification.js`.
    */
   emailVerified: boolean;
+  /** `admin` unlocks the admin area. Read from the API, enforced there too. */
+  role: UserRole;
+  plan: PlanTier;
+  planExpiresAt: string | null;
+  /** Every metered quota is bypassed while this is true. */
+  unlimited: boolean;
+  /** null while unlimited means forever. */
+  unlimitedUntil: string | null;
   isActive: boolean;
   autoRenewPlan: boolean;
   createdAt: string;
@@ -167,9 +175,68 @@ export interface Post {
 /** One quota bucket, as returned by `/api/users/me/usage`. */
 export interface QuotaEntry {
   used: number;
-  limit: number;
-  remaining: number;
+  /**
+   * The ceiling, or null when the account is unlimited.
+   *
+   * Null rather than a number because `Infinity` does not survive JSON, and a
+   * sizeable placeholder would be a lie the interface would have to remember to
+   * special-case anyway.
+   */
+  limit: number | null;
+  remaining: number | null;
+  unlimited: boolean;
   period: 'day' | 'week';
+}
+
+/** Who may reach the admin area. */
+export type UserRole = 'user' | 'admin';
+
+/** Subscription tiers, cheapest first. */
+export type PlanTier = 'free' | 'creator' | 'pro';
+
+/** What a coupon grants when redeemed. */
+export type CouponKind = 'pro' | 'unlimited';
+
+/** One tier as the API describes it. */
+export interface BillingPlan {
+  tier: PlanTier;
+  name: string;
+  price: number;
+  limits: Record<PlanQuotaKey, number>;
+}
+
+/** The quota keys the plan catalog prices. */
+export type PlanQuotaKey = 'planGenerations' | 'newsLookups' | 'images';
+
+/** The caller's own position, from `GET /api/billing`. */
+export interface BillingSummary {
+  plans: BillingPlan[];
+  current: {
+    /** The tier the quotas are actually resolved against right now. */
+    plan: PlanTier;
+    /** What the account is set to — differs only when the plan has lapsed. */
+    storedPlan: PlanTier;
+    planExpiresAt: string | null;
+    lapsed: boolean;
+    unlimited: boolean;
+    unlimitedUntil: string | null;
+    couponCode: string | null;
+  };
+}
+
+/** A coupon, as the admin page sees it. */
+export interface Coupon {
+  id: string;
+  code: string;
+  kind: CouponKind;
+  durationDays: number | null;
+  maxRedemptions: number | null;
+  redemptionCount: number;
+  redemptions: { userId: string; at: string }[];
+  expiresAt: string | null;
+  isActive: boolean;
+  note: string;
+  createdAt: string;
 }
 
 /** Quota state for every metered resource. */

@@ -38,10 +38,13 @@ const VISIBLE_QUOTAS = [
  * @sideeffect none (pure)
  */
 function fillClass(entry: QuotaEntry): string {
-  if (entry.remaining === 0) return 'bg-destructive';
+  if (entry.unlimited) return 'bg-status-approved';
+  // `remaining` is null only when unlimited, which returned above.
+  const remaining = entry.remaining ?? 0;
+  if (remaining === 0) return 'bg-destructive';
   // One left is the warning band: enough to finish the thought, not enough to
   // spend without noticing.
-  if (entry.remaining <= 1) return 'bg-primary';
+  if (remaining <= 1) return 'bg-primary';
   return 'bg-status-approved';
 }
 
@@ -64,19 +67,30 @@ function QuotaRow({
   label: string;
   className?: string;
 }) {
-  // Guard against a zero limit producing NaN width if a configuration ever
-  // sets one to nothing.
-  const pct = entry.limit > 0 ? Math.round((entry.used / entry.limit) * 100) : 0;
+  // An unlimited account has a null limit, so a percentage would be undefined —
+  // the bar is drawn full instead, which is what "no ceiling" looks like.
+  const pct = entry.unlimited
+    ? 100
+    : entry.limit && entry.limit > 0
+      ? Math.min(100, Math.round((entry.used / entry.limit) * 100))
+      : 0;
 
-  const state =
-    entry.remaining === 0 ? 'Used up' : entry.remaining <= 1 ? 'Running low' : null;
+  const remaining = entry.remaining ?? 0;
+
+  const state = entry.unlimited
+    ? 'Unlimited'
+    : remaining === 0
+      ? 'Used up'
+      : remaining <= 1
+        ? 'Running low'
+        : null;
 
   return (
     <div className={cn('flex flex-col gap-1.5', className)}>
       <div className="flex items-baseline justify-between gap-2">
         <span className="text-sidebar-foreground text-xs font-medium">{label}</span>
         <span className="text-muted-foreground text-xs tabular-nums">
-          {entry.remaining}/{entry.limit}
+          {entry.unlimited ? `${entry.used} used` : `${entry.remaining}/${entry.limit}`}
         </span>
       </div>
 
@@ -85,8 +99,12 @@ function QuotaRow({
         role="progressbar"
         aria-valuenow={entry.used}
         aria-valuemin={0}
-        aria-valuemax={entry.limit}
-        aria-label={`${label} used this ${entry.period}`}
+        aria-valuemax={entry.unlimited ? undefined : (entry.limit ?? undefined)}
+        aria-label={
+          entry.unlimited
+            ? `${label} used this ${entry.period}, unlimited`
+            : `${label} used this ${entry.period}`
+        }
       >
         <div
           className={cn('h-full rounded-full transition-[width] duration-300', fillClass(entry))}
@@ -98,10 +116,12 @@ function QuotaRow({
         <span
           className={cn(
             'text-xs',
-            entry.remaining === 0 ? 'text-destructive' : 'text-muted-foreground',
+            !entry.unlimited && remaining === 0 ? 'text-destructive' : 'text-muted-foreground',
           )}
         >
-          {state} · resets {entry.period === 'day' ? 'at midnight UTC' : 'Monday'}
+          {entry.unlimited
+            ? 'No limit on this account'
+            : `${state} · resets ${entry.period === 'day' ? 'at midnight UTC' : 'Monday'}`}
         </span>
       )}
     </div>
@@ -135,8 +155,11 @@ export function QuotaMeter({
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
         {rows.map(({ label, entry }) => (
           <span key={label} className="text-muted-foreground text-xs tabular-nums">
-            <span className="text-foreground font-medium">{entry.remaining}</span>/{entry.limit}{' '}
-            {label.toLowerCase()} left today
+            <span className="text-foreground font-medium">
+              {entry.unlimited ? 'Unlimited' : entry.remaining}
+            </span>
+            {!entry.unlimited && <>/{entry.limit}</>} {label.toLowerCase()}{' '}
+            {entry.unlimited ? '' : 'left '}today
           </span>
         ))}
       </div>

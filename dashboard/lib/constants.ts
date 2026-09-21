@@ -25,6 +25,9 @@ export const PROTECTED_PREFIXES = [
   '/billing',
   '/settings',
   '/compose',
+  // The admin area. `proxy.ts` only checks that a cookie exists; the page itself
+  // and the API both refuse a non-admin, so this is the outermost of three.
+  '/admin',
 ] as const;
 
 /** Routes a signed-in user should be redirected away from. */

@@ -2,9 +2,10 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { CreditCard, FileText, LayoutGrid, Settings } from 'lucide-react';
+import { CreditCard, FileText, LayoutGrid, Settings, ShieldCheck } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
+import type { UserRole } from '@/lib/types';
 
 /**
  * The navigation model, defined once.
@@ -20,6 +21,26 @@ const NAV_ITEMS = [
   { href: '/billing', label: 'Billing', icon: CreditCard },
   { href: '/settings', label: 'Settings', icon: Settings },
 ] as const;
+
+/**
+ * The item only an administrator sees.
+ *
+ * Kept out of `NAV_ITEMS` because it is conditional. The API refuses these
+ * routes to a non-admin regardless — this only avoids showing a door that will
+ * not open.
+ */
+const ADMIN_ITEM = { href: '/admin/coupons', label: 'Admin', icon: ShieldCheck } as const;
+
+/**
+ * The nav list for a role.
+ *
+ * @param role - The signed-in user's role.
+ * @returns The nav items, including the admin entry when it applies.
+ * @sideeffect none (pure)
+ */
+function navItemsFor(role: UserRole) {
+  return role === 'admin' ? [...NAV_ITEMS, ADMIN_ITEM] : [...NAV_ITEMS];
+}
 
 /**
  * Reports whether a nav item is the active one.
@@ -47,12 +68,12 @@ function isActive(pathname: string, href: string): boolean {
  * @returns The nav list.
  * @sideeffect none
  */
-export function SidebarNav() {
+export function SidebarNav({ role }: { role: UserRole }) {
   const pathname = usePathname();
 
   return (
     <nav aria-label="Main" className="flex flex-col gap-1">
-      {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+      {navItemsFor(role).map(({ href, label, icon: Icon }) => {
         const active = isActive(pathname, href);
         return (
           <Link
@@ -87,8 +108,9 @@ export function SidebarNav() {
  * @returns The bottom bar.
  * @sideeffect none
  */
-export function BottomNav() {
+export function BottomNav({ role }: { role: UserRole }) {
   const pathname = usePathname();
+  const items = navItemsFor(role);
 
   return (
     <nav
@@ -98,8 +120,15 @@ export function BottomNav() {
       // sitting underneath it.
       style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
     >
-      <ul className="grid grid-cols-4">
-        {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+      {/* The column count is derived from the list rather than hardcoded. It was
+          `grid-cols-4`, which silently broke the row the moment a fifth item
+          existed — the admin entry. Tailwind cannot build a class name at run
+          time, so the count is set inline. */}
+      <ul
+        className="grid"
+        style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}
+      >
+        {items.map(({ href, label, icon: Icon }) => {
           const active = isActive(pathname, href);
           return (
             <li key={href}>

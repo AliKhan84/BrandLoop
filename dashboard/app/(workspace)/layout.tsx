@@ -71,7 +71,7 @@ export default async function WorkspaceLayout({ children }: { children: React.Re
             </div>
             <ThemeToggle />
           </div>
-          <SidebarNav />
+          <SidebarNav role={user.role} />
         </div>
 
         <div className="flex flex-col gap-3">
@@ -111,7 +111,7 @@ export default async function WorkspaceLayout({ children }: { children: React.Re
         </main>
       </div>
 
-      <BottomNav />
+      <BottomNav role={user.role} />
     </div>
   );
 }

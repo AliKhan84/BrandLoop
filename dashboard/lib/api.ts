@@ -1,11 +1,15 @@
 import 'server-only';
 
 import type {
+  BillingSummary,
   ContentPlan,
   ContentPlanSummary,
+  Coupon,
+  CouponKind,
   GenerateResult,
   LinkCode,
   Platform,
+  PlanTier,
   Post,
   PostStatus,
   PostType,
@@ -252,6 +256,114 @@ export async function resendVerification(token: string): Promise<{
   emailVerified?: boolean;
 }> {
   return request('/api/auth/resend-verification', { method: 'POST', token });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Plans and coupons
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Loads the plan catalog and where this account stands.
+ *
+ * The catalog comes from the API rather than from constants in this package:
+ * the page used to hold the numbers as literals while the enforced limits lived
+ * in the API's config, so editing one left the other advertising a stale figure.
+ *
+ * @param token - The session JWT.
+ * @returns Every tier, plus the caller's effective tier and grants.
+ * @throws {ApiError} 401 when the token is rejected.
+ * @sideeffect none (read-only)
+ */
+export async function getBilling(token: string): Promise<BillingSummary> {
+  return request('/api/billing', { token });
+}
+
+/**
+ * Redeems a coupon code for the signed-in account.
+ *
+ * @param token - The session JWT.
+ * @param code - The code as typed; the API normalises case and spacing.
+ * @returns What was granted, and the account fields that changed.
+ * @throws {ApiError} 400 with the API's own reason when the code cannot be used.
+ * @sideeffect Applies the grant to the user.
+ */
+export async function redeemCoupon(
+  token: string,
+  code: string,
+): Promise<{
+  redeemed: { code: string; kind: CouponKind; durationDays: number | null };
+  account: {
+    plan: PlanTier;
+    planExpiresAt: string | null;
+    unlimited: boolean;
+    unlimitedUntil: string | null;
+  };
+}> {
+  return request('/api/coupons/redeem', { method: 'POST', token, body: { code } });
+}
+
+/**
+ * Lists coupons. Admin only — the API enforces it, and the page protects itself.
+ *
+ * @param token - The session JWT.
+ * @returns Every coupon, newest first.
+ * @throws {ApiError} 403 when the caller is not an administrator.
+ * @sideeffect none (read-only)
+ */
+export async function listCoupons(token: string): Promise<Coupon[]> {
+  const { coupons } = await request<{ coupons: Coupon[] }>('/api/admin/coupons', { token });
+  return coupons;
+}
+
+/**
+ * Creates a coupon. Admin only.
+ *
+ * @param token - The session JWT.
+ * @param input - The code (optional — the API generates one), what it grants,
+ *   how long for, and how many times it may be used.
+ * @returns The created coupon.
+ * @throws {ApiError} 409 when the chosen code already exists.
+ * @sideeffect Writes a coupon.
+ */
+export async function createCoupon(
+  token: string,
+  input: {
+    code?: string;
+    kind: CouponKind;
+    durationDays: number | null;
+    maxRedemptions: number | null;
+    note?: string;
+  },
+): Promise<Coupon> {
+  const { coupon } = await request<{ coupon: Coupon }>('/api/admin/coupons', {
+    method: 'POST',
+    token,
+    body: input,
+  });
+  return coupon;
+}
+
+/**
+ * Enables or disables a coupon. Admin only.
+ *
+ * @param token - The session JWT.
+ * @param couponId - The coupon to change.
+ * @param isActive - The new state.
+ * @returns The updated coupon.
+ * @throws {ApiError} 404 when there is no such coupon.
+ * @sideeffect Updates a coupon.
+ */
+export async function setCouponActive(
+  token: string,
+  couponId: string,
+  isActive: boolean,
+): Promise<Coupon> {
+  const { coupon } = await request<{ coupon: Coupon }>(`/api/admin/coupons/${couponId}`, {
+    method: 'PATCH',
+    token,
+    body: { isActive },
+  });
+  return coupon;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
