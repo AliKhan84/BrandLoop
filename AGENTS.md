@@ -308,7 +308,7 @@ for the API to enumerate guilds has the same trap.
 ```bash
 # root — API on 8080
 npm start            # or: npm run dev (nodemon)
-npm test             # node --test, 150 tests
+npm test             # node --test, 156 tests
 npm run probe        # validates the AI models and every credential
                      # `npm run probe -- --images` also generates one for real
 npm run seed         # demo account: demo@brandloop.local / demo-password-123
@@ -349,7 +349,33 @@ test runs can never be sent to a real account):
 
 ---
 
-## 8. Environment and secrets
+## 8. Working agreement — commit and push after every change
+
+An explicit instruction from the owner, and it outranks tidiness: when work in
+this repository is to be committed and pushed, **each change lands as its own
+commit and is pushed immediately.** Do not gather a session's work into one large
+commit at the end.
+
+- **One logical change, one commit.** A feature, a bug fix, a doc correction and
+  a UI tweak are four commits even when they happen in the same sitting.
+- **Push as soon as it is committed.** Leaving commits local defeats the point:
+  the images publish from `main`, and the owner may be reviewing from another
+  machine.
+- **Gates before the commit, not after.** `npm test`, then `npx tsc --noEmit` and
+  `npx eslint .` in `dashboard/`. A failing gate means fixing it, then committing
+  — never `--no-verify`, never a "fix it later" commit.
+- **Never commit** `.env`, `media/`, build output, or state left behind by a
+  fixture run. Check `git status` before staging.
+- **The message says why.** Same standard as the comments in the code (§4): the
+  reasoning and what it costs. Where a claim is measurable — a contrast ratio, a
+  test count, a build size — the measurement goes in the message.
+- **Work that may be reverted gets its own commit**, so it can be reverted alone
+  without unpicking whatever came after it. The nav contrast change is the
+  example: it was requested as a separate, revertable commit.
+
+---
+
+## 9. Environment and secrets
 
 `.env` is gitignored and holds the Discord token, Mongo credentials and the AI
 key. Never commit it, never log it.
@@ -363,7 +389,7 @@ Model names live in env, never hardcoded in `src/` — the catalog moves fast an
 
 ---
 
-## 9. Open questions
+## 10. Open questions
 
 **The original LinkedIn delivery failure's root cause is known** (gotcha 6.2) and
 fixed. What is *not* known is whether any LinkedIn post was lost before
