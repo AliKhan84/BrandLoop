@@ -43,7 +43,7 @@ import {
   PLATFORM_LIMITS,
   POST_TYPE,
 } from '../../config/constants.js';
-import { enforcePlatformLimit, excerpt, countCharacters } from '../../utils/text.js';
+import { enforcePlatformLimit, excerpt, countCharacters, normalizePostText } from '../../utils/text.js';
 import { logger } from '../../utils/logger.js';
 
 /**
@@ -380,8 +380,18 @@ export async function generatePost({ user, slot, platform, existingNews = null }
   // `appendHashtags`, so the reservation cannot drift from what is appended.
   const tagSuffixLength = hashtags.length > 0 ? hashtags.join(' ').length + 2 : 0;
 
+  // LinkedIn's body is normalised for a paste target BEFORE the length check,
+  // because inserting paragraph breaks adds characters that then have to be
+  // measured — normalising afterwards could push a fitted post back over.
+  // X keeps its raw body: its prompt already forbids list markers, and blank
+  // lines would spend a 280-character budget on nothing.
+  const bodyText =
+    platform === PLATFORM.LINKEDIN
+      ? normalizePostText(result.data?.content ?? '')
+      : (result.data?.content ?? '');
+
   // The model's own length claim is not trusted — this is the guarantee.
-  const fitted = enforcePlatformLimit(result.data?.content ?? '', platform, {
+  const fitted = enforcePlatformLimit(bodyText, platform, {
     reserve: tagSuffixLength,
   });
 

@@ -53,6 +53,119 @@ export function normalizeWhitespace(text) {
 }
 
 /**
+ * Removes the markdown syntax a paste target would otherwise show literally.
+ *
+ * WHY THIS EXISTS
+ *   The prompt asks the model for plain text and the schema repeats it, but a
+ *   request is not a guarantee: a `**` or a `#` that slips through reaches the
+ *   clipboard unchanged and appears in the post as literal punctuation. Neither
+ *   X nor LinkedIn renders markdown, so the characters are pure noise.
+ *
+ * WHAT IS DELIBERATELY NOT STRIPPED
+ *   Single-asterisk emphasis. `*` is also multiplication, and rewriting
+ *   "5 * 3 * 2" is a worse failure than leaving an italic marker alone.
+ *   Link targets survive too: `[text](url)` becomes `text (url)` so the URL is
+ *   still visible and still clickable after a paste.
+ *
+ * @param {string} text - Text that may contain markdown.
+ * @returns {string} The same text with markdown syntax removed.
+ */
+export function stripMarkdown(text) {
+  if (typeof text !== 'string') return '';
+
+  return text
+    .replace(/^#{1,6}[ \t]+/gm, '')            // "# Heading" → "Heading"
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '$1 ($2)') // links keep their URL
+    .replace(/\*\*([^*]+)\*\*/g, '$1')         // **bold**
+    .replace(/__([^_]+)__/g, '$1')             // __bold__
+    .replace(/`([^`]+)`/g, '$1');              // `code`
+}
+
+/**
+ * Turns leading hyphens and asterisks into bullet characters.
+ *
+ * WHY: the prompt asks for "a plain '-' at the start of a line", which is the
+ * right thing to ask a model for — it is unambiguous and reliable. But LinkedIn
+ * only builds a bullet when the marker is *typed* and space-pressed; a pasted
+ * `-` stays a hyphen. So the marker is translated at the last moment, here.
+ *
+ * The replacement is character-for-character ("- " and "• " are both two
+ * characters), so every length guarantee established by `enforcePlatformLimit`
+ * still holds after conversion.
+ *
+ * @param {string} text - Text whose list items start with `-` or `*`.
+ * @returns {string} Text whose list items start with `•`, indentation kept.
+ */
+export function bulletsFromDashes(text) {
+  if (typeof text !== 'string') return '';
+  return text.replace(/^([ \t]*)[-*][ \t]+/gm, '$1• ');
+}
+
+/**
+ * Prepares a post body for a paste target that renders no markdown.
+ *
+ * ## The problem this solves
+ *
+ * A generated LinkedIn post pasted into the composer arrived cramped: paragraph
+ * breaks had collapsed, and list items showed as hyphens. The text was correct
+ * in the database — LinkedIn simply ignores a single newline between lines, and
+ * a pasted hyphen is never turned into a list. Both had to be fixed here rather
+ * than in the clipboard code, so the Discord DM, the X composer and the
+ * dashboard all show the same text the user will post.
+ *
+ * ## The three rules
+ *
+ *   1. Strip markdown, then convert list markers (`bulletsFromDashes`).
+ *   2. A blank line separates paragraphs — a single newline only stays where the
+ *      previous line does not end a sentence, which preserves deliberate short
+ *      lines such as a one-line hook while repairing prose the model ran
+ *      together.
+ *   3. A bullet run is never split by a blank line, and a list always gets a
+ *      blank line before and after it, so it stays a list on the far side.
+ *
+ * Idempotent: the output of one pass is unchanged by the next, which matters
+ * because a regenerated post travels the same path as a fresh one.
+ *
+ * @param {string} text - Raw post body from the model.
+ * @returns {string} Body ready to be pasted into a plain-text editor.
+ */
+export function normalizePostText(text) {
+  if (typeof text !== 'string') return '';
+
+  const cleaned = bulletsFromDashes(stripMarkdown(normalizeWhitespace(text)));
+
+  const isListItem = (line) => /^[ \t]*(•|\d+[.)])[ \t]/.test(line);
+  // A line that ends a sentence reads as a finished thought, so the next line
+  // is a new paragraph. A line that does not is treated as a continuation —
+  // that is what keeps a hook line and its payoff together.
+  const endsSentence = (line) => /[.!?:]["'”’)]?$/.test(line.trim());
+
+  const out = [];
+
+  for (const line of cleaned.split('\n')) {
+    const previous = out.length > 0 ? out[out.length - 1] : null;
+    const previousIsBlank = previous === '';
+
+    if (line === '') {
+      out.push('');
+      continue;
+    }
+
+    if (previous !== null && !previousIsBlank) {
+      const startsList = isListItem(line) && !isListItem(previous);
+      const endsList = isListItem(previous) && !isListItem(line);
+      const newParagraph = !isListItem(line) && !isListItem(previous) && endsSentence(previous);
+
+      if (startsList || endsList || newParagraph) out.push('');
+    }
+
+    out.push(line);
+  }
+
+  return normalizeWhitespace(out.join('\n'));
+}
+
+/**
  * Counts the characters a platform will actually charge for.
  *
  * WHY NOT `text.length`: JavaScript counts UTF-16 code units, so a single
@@ -249,6 +362,9 @@ export function describeLength(text, platform) {
 
 export default {
   normalizeWhitespace,
+  stripMarkdown,
+  bulletsFromDashes,
+  normalizePostText,
   countCharacters,
   truncateOnSentence,
   enforcePlatformLimit,

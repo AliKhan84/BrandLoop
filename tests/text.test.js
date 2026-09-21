@@ -15,6 +15,9 @@ import assert from 'node:assert/strict';
 
 import {
   normalizeWhitespace,
+  stripMarkdown,
+  bulletsFromDashes,
+  normalizePostText,
   countCharacters,
   truncateOnSentence,
   enforcePlatformLimit,
@@ -51,6 +54,107 @@ describe('normalizeWhitespace', () => {
   test('returns an empty string for a non-string input', () => {
     assert.equal(normalizeWhitespace(null), '');
     assert.equal(normalizeWhitespace(undefined), '');
+  });
+});
+
+describe('stripMarkdown', () => {
+  test('removes emphasis markers but keeps the words', () => {
+    assert.equal(stripMarkdown('**Big** news'), 'Big news');
+    assert.equal(stripMarkdown('__Big__ news'), 'Big news');
+    assert.equal(stripMarkdown('a `code` b'), 'a code b');
+  });
+
+  test('removes heading marks', () => {
+    assert.equal(stripMarkdown('## Why this matters'), 'Why this matters');
+  });
+
+  test('keeps a link’s URL instead of dropping it', () => {
+    // A pasted "[the report](url)" is unusable in a post; the URL must survive
+    // in a form a reader can still see and click.
+    assert.equal(
+      stripMarkdown('See [the report](https://example.com/x)'),
+      'See the report (https://example.com/x)',
+    );
+  });
+
+  test('leaves a single asterisk alone', () => {
+    // `*` is also multiplication. Rewriting "5 * 3 * 2" would be a worse bug
+    // than leaving an italic marker in place.
+    assert.equal(stripMarkdown('5 * 3 * 2'), '5 * 3 * 2');
+  });
+});
+
+describe('bulletsFromDashes', () => {
+  test('converts a hyphen list item to a bullet', () => {
+    assert.equal(bulletsFromDashes('- one'), '• one');
+    assert.equal(bulletsFromDashes('* one'), '• one');
+  });
+
+  test('keeps indentation', () => {
+    assert.equal(bulletsFromDashes('  - nested'), '  • nested');
+  });
+
+  test('leaves a numbered list alone', () => {
+    assert.equal(bulletsFromDashes('1. first'), '1. first');
+  });
+
+  test('does not touch a hyphen inside a sentence', () => {
+    assert.equal(bulletsFromDashes('a well-known fact'), 'a well-known fact');
+  });
+
+  test('is length-neutral, so a fitted post still fits', () => {
+    // "- " and "• " are both two characters. If this ever changes, the length
+    // guarantee in enforcePlatformLimit silently stops holding.
+    const text = '- one\n- two\n- three';
+    assert.equal(countCharacters(bulletsFromDashes(text)), countCharacters(text));
+  });
+});
+
+describe('normalizePostText', () => {
+  test('turns the model’s dashed list into bullets', () => {
+    assert.equal(normalizePostText('- one\n- two'), '• one\n• two');
+  });
+
+  test('never splits a list run with a blank line', () => {
+    // LinkedIn ends a list at the first blank line; inserting one would break
+    // the list into separate paragraphs.
+    assert.equal(normalizePostText('- one\n- two\n- three'), '• one\n• two\n• three');
+  });
+
+  test('puts a blank line before and after a list', () => {
+    assert.equal(
+      normalizePostText('Intro line.\n- one\n- two\nClosing line.'),
+      'Intro line.\n\n• one\n• two\n\nClosing line.',
+    );
+  });
+
+  test('separates two prose lines that each end a sentence', () => {
+    assert.equal(
+      normalizePostText('First sentence here.\nSecond sentence here.'),
+      'First sentence here.\n\nSecond sentence here.',
+    );
+  });
+
+  test('keeps a short hook line attached to the line beneath it', () => {
+    // A line that does not end a sentence is treated as a continuation, so
+    // deliberate short lines are not spread apart.
+    assert.equal(
+      normalizePostText('Most founders get this wrong\nHere is the fix.'),
+      'Most founders get this wrong\nHere is the fix.',
+    );
+  });
+
+  test('strips markdown as part of the same pass', () => {
+    assert.equal(normalizePostText('**Big** news'), 'Big news');
+  });
+
+  test('is idempotent, so a regenerated post is not re-spaced', () => {
+    const once = normalizePostText('Intro line.\n- one\n- two\nClosing line.');
+    assert.equal(normalizePostText(once), once);
+  });
+
+  test('handles a non-string without throwing', () => {
+    assert.equal(normalizePostText(null), '');
   });
 });
 

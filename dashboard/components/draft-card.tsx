@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 
 import { Button, buttonVariants } from '@/components/ui/button';
 import { EditDraftDialog } from '@/components/edit-draft-dialog';
+import { writeDraftToClipboard } from '@/lib/clipboard';
 import {
   PLATFORM_LABELS,
   PLATFORM_LIMITS,
@@ -73,12 +74,16 @@ export function DraftCard({ post, showTheme = false }: { post: Post; showTheme?:
    * that is what the user is about to paste. Copying the body alone would
    * silently drop the hashtags.
    *
+   * Writes HTML alongside the text (`lib/clipboard.ts`) so paragraphs and list
+   * items survive a paste into LinkedIn, which renders no markdown and would
+   * otherwise show a hyphen where a bullet belongs.
+   *
    * @returns Resolves once the attempt finishes, successful or not.
    * @sideeffect Writes to the clipboard; shows a toast.
    */
   async function handleCopy() {
     try {
-      await navigator.clipboard.writeText(text);
+      await writeDraftToClipboard(text);
       setCopied(true);
       toast.success('Copied', { description: `${length} characters on your clipboard.` });
       // Reverts so the button is usable again without a page reload.

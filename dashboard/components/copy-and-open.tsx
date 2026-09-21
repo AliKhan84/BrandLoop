@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Check, Copy, ExternalLink } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { writeDraftToClipboard } from '@/lib/clipboard';
 import { cn } from '@/lib/utils';
 
 /**
@@ -29,6 +30,14 @@ import { cn } from '@/lib/utils';
  * click handler, so the user gesture still covers it. Opening first and copying
  * after would lose the gesture and the copy would be refused.
  *
+ * ## Why the clipboard write carries HTML as well as text
+ *
+ * A plain-text write gives LinkedIn characters and nothing else: no paragraphs,
+ * and a `-` that stays a hyphen because a paste never triggers its list
+ * detection. Writing both flavours means the editor receives real paragraphs and
+ * list items. See `lib/clipboard.ts` — the drafts page uses the same helper, so
+ * both copy buttons behave identically.
+ *
  * @param props - Component props.
  * @param props.text - The exact text to put on the clipboard.
  * @param props.composerUrl - Where to send the user once it is copied.
@@ -51,7 +60,7 @@ export function CopyAndOpen({
     let copied = false;
 
     try {
-      await navigator.clipboard.writeText(text);
+      await writeDraftToClipboard(text);
       copied = true;
       setState('copied');
     } catch {
