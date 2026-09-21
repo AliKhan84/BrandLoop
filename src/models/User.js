@@ -135,6 +135,56 @@ const userSchema = new Schema(
       select: false,
     },
 
+    // ── Email verification ──────────────────────────────────────────────────
+    /**
+     * Whether the user has confirmed they control their email address.
+     *
+     * WHY THE ACCOUNT IS USABLE EITHER WAY: verification is soft. An
+     * unverified account signs in normally and the dashboard asks it to
+     * confirm; blocking sign-in would mean one bad mail credential locks every
+     * new account out of the product entirely.
+     */
+    emailVerified: {
+      type: Boolean,
+      default: false,
+    },
+
+    /** When the address was confirmed. Null until then. */
+    emailVerifiedAt: {
+      type: Date,
+      default: null,
+    },
+
+    /**
+     * SHA-256 of the verification token — never the token itself.
+     *
+     * A database dump containing raw tokens is a set of account takeovers, so
+     * the token exists only in the email and in the moment it is compared.
+     * `select: false` for the same reason as `passwordHash`: a field nothing
+     * queries by accident cannot leak by accident. The index is on the hash,
+     * which is how redemption finds the user — the raw token is never a query.
+     */
+    emailVerificationTokenHash: {
+      type: String,
+      default: null,
+      select: false,
+      index: true,
+    },
+
+    /** When the verification link stops working. */
+    emailVerificationExpiresAt: {
+      type: Date,
+      default: null,
+      select: false,
+    },
+
+    /** When the last verification email was sent, for the resend cooldown. */
+    emailVerificationSentAt: {
+      type: Date,
+      default: null,
+      select: false,
+    },
+
     // ── Lifecycle ───────────────────────────────────────────────────────────
     /** Paused users keep their data but are skipped by the scheduler. */
     isActive: {
@@ -222,6 +272,7 @@ userSchema.methods.toPublicJSON = function toPublicJSON() {
     platforms: this.platforms,
     timezone: this.timezone,
     discordLinked: Boolean(this.discordUserId),
+    emailVerified: this.emailVerified,
     isActive: this.isActive,
     autoRenewPlan: this.autoRenewPlan,
     createdAt: this.createdAt,

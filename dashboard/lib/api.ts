@@ -219,6 +219,41 @@ export async function login(input: {
   return request('/api/auth/login', { method: 'POST', body: input });
 }
 
+/**
+ * Redeems a verification token from the link in the email.
+ *
+ * No session token is passed, deliberately: the token *is* the credential, and
+ * a verification link is usually opened on whichever device has the mailbox —
+ * often one where nobody is signed in.
+ *
+ * @param token - The raw token from the URL's query string.
+ * @returns The confirmed user.
+ * @throws {ApiError} 400 when the token is unknown, already used, or expired —
+ *   the message distinguishes the last two, because the remedies differ.
+ * @sideeffect Marks the address verified; the link is then spent.
+ */
+export async function verifyEmail(token: string): Promise<{ user: User; emailVerified: true }> {
+  return request('/api/auth/verify-email', { method: 'POST', body: { token } });
+}
+
+/**
+ * Asks the API to send a fresh verification link.
+ *
+ * @param token - The session JWT.
+ * @returns Whether it was sent, why not when it was not, and when another
+ *   attempt is allowed.
+ * @throws {ApiError} 429 when called inside the cooldown.
+ * @sideeffect Sends mail and rewrites the stored token.
+ */
+export async function resendVerification(token: string): Promise<{
+  sent: boolean;
+  reason?: string;
+  nextAllowedAt?: string;
+  emailVerified?: boolean;
+}> {
+  return request('/api/auth/resend-verification', { method: 'POST', token });
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Profile and quota
 // ─────────────────────────────────────────────────────────────────────────────

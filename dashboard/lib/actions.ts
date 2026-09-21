@@ -131,6 +131,54 @@ export async function signOutAction(): Promise<void> {
 }
 
 /**
+ * Sends a fresh verification link to the signed-in user's address.
+ *
+ * Reports the API's own answer rather than assuming success. Three outcomes
+ * matter and only one of them is "an email is on its way": the address may
+ * already be confirmed, or this deployment may have no mail credentials at all —
+ * in which case the link was written to the server log and saying "sent" would
+ * be a straight lie to the user.
+ *
+ * Takes no arguments on purpose: the address is the session's own, so there is
+ * nothing for the form to carry. `useActionState` still calls it with
+ * `(state, formData)` — both are ignored, and declaring parameters that are
+ * never read would only produce lint warnings.
+ *
+ * @returns Form state describing what happened.
+ * @sideeffect Sends mail through the API.
+ */
+export async function resendVerificationAction(): Promise<ActionState> {
+  const token = await getSessionToken();
+  if (!token) return { error: 'Your session has ended. Please sign in again.' };
+
+  let result: Awaited<ReturnType<typeof api.resendVerification>>;
+
+  try {
+    result = await api.resendVerification(token);
+  } catch (err) {
+    // Covers the 429 cooldown too — the API's message says how long to wait, and
+    // it is more specific than anything this layer could invent.
+    return toActionState(err);
+  }
+
+  if (result.emailVerified) {
+    return { error: null, success: 'This address is already confirmed.' };
+  }
+
+  if (!result.sent) {
+    return {
+      error: null,
+      success:
+        result.reason === 'smtp-not-configured'
+          ? 'Email is not set up on this deployment, so the link was written to the server log instead.'
+          : 'The message could not be sent just now. Please try again in a moment.',
+    };
+  }
+
+  return { error: null, success: 'Sent — check your inbox.' };
+}
+
+/**
  * Saves profile changes from the settings form.
  *
  * @param _prev - Previous form state, supplied by `useActionState`.

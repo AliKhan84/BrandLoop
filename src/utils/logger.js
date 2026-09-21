@@ -70,6 +70,8 @@ const LITERAL_SECRETS = [
   env.JWT_SECRET,
   env.GEMINI_API_KEY,
   env.OPENAI_API_KEY,
+  // An SMTP password is usually an app password that also grants mailbox access.
+  env.SMTP_PASS,
   // The password sits inside the URI, so redact the whole connection string.
   env.MONGODB_URI,
 ].filter((s) => typeof s === 'string' && s.length >= 8);

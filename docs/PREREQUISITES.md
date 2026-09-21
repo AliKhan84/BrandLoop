@@ -21,8 +21,8 @@
 | 1. OpenAI | 0 | 5 |
 | 2. Discord | 0 | 7 |
 | 3. MongoDB | 0 | 4 |
-| 4. Local | 0 | 3 |
-| **Total** | **0** | **19** |
+| 4. Local | 0 | 4 |
+| **Total** | **0** | **20** |
 
 ---
 
@@ -169,6 +169,28 @@ A `401` from OpenAI is a **pass** — it means the request reached OpenAI and wa
 
 **Why:** PRD §8 flags this for the university server. Better to find out now than on deploy day.
 
+### 4.4 — Mail for verification links (optional)
+- [ ] Decide whether signup should send a real verification email.
+
+The feature works either way, and this is the one place where "not configured" is a supported state rather than a failure:
+
+- **No credentials set** — the API logs the verification link instead of sending it, and the whole flow (banner → link → confirmed) can still be walked through. Nothing blocks and nothing fails.
+- **Credentials set** — the link is emailed. Gmail needs an **App Password**, which requires 2FA on the account: Google Account → Security → 2-Step Verification → App passwords. The account password will not work, and the failure looks like a plain `535 authentication failed`.
+
+```bash
+# smtp.gmail.com, port 587, STARTTLS
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=you@gmail.com
+SMTP_PASS=abcd efgh ijkl mnop
+```
+
+Any provider works — the code speaks plain SMTP, so Resend, Brevo and Mailtrap are the same three values with a different host.
+
+Verification is deliberately **soft**: an unverified account signs in and uses the app normally, with a banner asking it to confirm. Blocking sign-in would mean one bad mail credential locks every new account out of the product.
+
+`npm run probe` checks these credentials when they are present, so a wrong app password is found before a demo rather than during one.
+
 ---
 
 ## 5. Reference — final `.env` shape
@@ -193,6 +215,12 @@ JWT_SECRET=...
 # DEV_TOOLS_ENABLED=true           # enables /api/dev/* manual triggers — dev only
 # DISCORD_LINK_CODE_TTL_MIN=15
 # MAX_REGENERATIONS_PER_POST=3
+
+# ── Email (optional — verification links) ───────────────────
+# SMTP_HOST=smtp.gmail.com
+# SMTP_PORT=587
+# SMTP_USER=you@gmail.com
+# SMTP_PASS=abcd efgh ijkl mnop     # App Password, not the account password
 ```
 
 The agent writes `.env.example` with all of these documented in Step 0.3. It also keeps a fallback that reads the legacy lowercase `openai_api_key`, so nothing breaks mid-migration.

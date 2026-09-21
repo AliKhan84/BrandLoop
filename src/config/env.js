@@ -161,6 +161,26 @@ const envSchema = z.object({
   // Items older than this are dropped, so a news post is genuinely recent.
   NEWS_MAX_AGE_DAYS: z.coerce.number().int().positive().default(7),
 
+  // ── Email (address verification) ─────────────────────────────────────────
+  // All optional, deliberately. With no credentials the API still boots and the
+  // verification link is logged instead of sent, so a missing mail account can
+  // never stop the server — and the flow stays demonstrable on a laptop. See
+  // EMAIL_ENABLED in loadEnv(), which is what the email code checks.
+  SMTP_HOST: z.string().trim().optional(),
+  SMTP_PORT: z.coerce.number().int().positive().default(587),
+  // true for implicit TLS on port 465, false for STARTTLS on 587. Not inferred
+  // from the port: providers disagree, and a wrong guess fails as a timeout.
+  SMTP_SECURE: booleanFromEnv(false),
+  SMTP_USER: z.string().trim().optional(),
+  SMTP_PASS: z.string().optional(),
+  MAIL_FROM: z.string().trim().default('BrandLoop <no-reply@brandloop.local>'),
+  // A day, because the first thing a recipient does with an unexpected email is
+  // look for it in the spam folder — and 15 minutes is not enough time.
+  EMAIL_VERIFICATION_TTL_MIN: z.coerce.number().int().positive().default(1440),
+  // Minimum gap between resends. Without it one signed-in account can burn a
+  // provider's daily sending quota and get the domain flagged as a spammer.
+  EMAIL_RESEND_COOLDOWN_SEC: z.coerce.number().int().nonnegative().default(60),
+
   // ── Misc ─────────────────────────────────────────────────────────────────
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error', 'silent']).default('info'),
 });
@@ -245,6 +265,14 @@ function loadEnv() {
     DASHBOARD_BASE_URL: (parsed.DASHBOARD_BASE_URL || 'http://localhost:3000').replace(/\/+$/, ''),
     /** Dev triggers are never available in production, whatever the env says. */
     DEV_TOOLS_ENABLED: parsed.DEV_TOOLS_ENABLED && parsed.NODE_ENV !== 'production',
+    /**
+     * True when mail credentials are present.
+     *
+     * Derived rather than configured: a half-filled SMTP block (host but no
+     * password) would otherwise look enabled and fail on the first signup. The
+     * email code checks this one flag instead of four variables.
+     */
+    EMAIL_ENABLED: Boolean(parsed.SMTP_HOST && parsed.SMTP_USER && parsed.SMTP_PASS),
   });
 }
 

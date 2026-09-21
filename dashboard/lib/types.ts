@@ -48,6 +48,14 @@ export interface User {
   timezone: string;
   /** True once the Discord account has been paired. */
   discordLinked: boolean;
+  /**
+   * True once the user has clicked the link sent to their address.
+   *
+   * Verification is soft: an unverified account is fully usable and the shell
+   * shows a banner asking it to confirm. Nothing in the dashboard is gated on
+   * this — see the note in `src/services/email/verification.js`.
+   */
+  emailVerified: boolean;
   isActive: boolean;
   autoRenewPlan: boolean;
   createdAt: string;

@@ -5,6 +5,7 @@ import { BrandLogo } from '@/components/brand-logo';
 import { QuotaMeter } from '@/components/quota-meter';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { UserMenu } from '@/components/user-menu';
+import { VerifyEmailBanner } from '@/components/verify-email-banner';
 import { ApiError, getMe, getUsage } from '@/lib/api';
 import { getSessionToken } from '@/lib/session';
 import type { UsageSummary, User } from '@/lib/types';
@@ -101,7 +102,13 @@ export default async function WorkspaceLayout({ children }: { children: React.Re
           `pb-24` clears the fixed bottom nav on mobile so the last row of
           content is never trapped underneath it.
         */}
-        <main className="flex-1 px-4 py-6 pb-24 sm:px-6 lg:px-10 lg:py-8 lg:pb-10">{children}</main>
+        <main className="flex-1 px-4 py-6 pb-24 sm:px-6 lg:px-10 lg:py-8 lg:pb-10">
+          {/* Sits above every signed-in page, so an unconfirmed address is
+              visible wherever the user lands rather than only in settings.
+              Verification is soft — this asks, it does not gate. */}
+          {!user.emailVerified && <VerifyEmailBanner email={user.email} />}
+          {children}
+        </main>
       </div>
 
       <BottomNav />

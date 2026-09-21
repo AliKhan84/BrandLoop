@@ -87,6 +87,11 @@ async function upsertDemoUser() {
     user.postFrequency = DEMO.postFrequency;
     user.defaultPlanDuration = DEMO.defaultPlanDuration;
     user.isActive = true;
+    // The demo account is marked verified: there is no real inbox behind
+    // demo@brandloop.local, so an unverified demo would sit behind a "confirm
+    // your email" banner in every screenshot with no way to clear it.
+    user.emailVerified = true;
+    user.emailVerifiedAt = user.emailVerifiedAt ?? new Date();
     await user.save();
     return user;
   }
@@ -98,6 +103,8 @@ async function upsertDemoUser() {
     inputPoints: DEMO.inputPoints,
     postFrequency: DEMO.postFrequency,
     defaultPlanDuration: DEMO.defaultPlanDuration,
+    emailVerified: true,
+    emailVerifiedAt: new Date(),
   });
 
   await user.setPassword(DEMO.password);
@@ -159,6 +166,7 @@ async function main() {
   show('Niche', user.niche);
   show('Input points', `${user.inputPoints.length} supplied`);
   show('Discord linked', user.discordUserId ? `yes (${user.discordUserId})` : 'no');
+  show('Email verified', user.emailVerified ? 'yes' : 'no');
 
   console.log('\nDiscord link');
   show('Code', code);

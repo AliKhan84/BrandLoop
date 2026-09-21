@@ -35,6 +35,7 @@ import {
   getProvider,
   getProviderName,
 } from '../src/services/ai/index.js';
+import { verifyMailer } from '../src/services/email/mailer.js';
 import { safeString } from '../src/utils/logger.js';
 
 /**
@@ -357,6 +358,40 @@ async function checkDiscord() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 5. Email (optional)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Verifies the SMTP credentials, when there are any.
+ *
+ * WHY A MISSING CONFIGURATION IS A PASS, NOT A FAILURE: email is optional by
+ * design. With no credentials the API logs the verification link instead of
+ * sending it and the feature still works end to end, so reporting it as a
+ * failure would train the operator to skim past probe failures — which is the
+ * one habit this script exists to prevent. A *configured* credential that does
+ * not work, on the other hand, is exactly what should stop a demo.
+ *
+ * @returns {Promise<void>}
+ * @sideeffect Opens an SMTP connection when configured.
+ */
+async function checkEmail() {
+  section('5. Email (address verification)');
+
+  if (!env.EMAIL_ENABLED) {
+    pass('SMTP not configured', 'verification links are written to the log instead', {
+      critical: false,
+    });
+    return;
+  }
+
+  await check(`SMTP — ${env.SMTP_HOST}:${env.SMTP_PORT}`, async () => {
+    const { ok, error } = await verifyMailer();
+    if (!ok) throw new Error(error);
+    return `authenticated as ${env.SMTP_USER}, sending from ${env.MAIL_FROM}`;
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Summary
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -417,6 +452,8 @@ async function main() {
   } catch (err) {
     fail('Discord check crashed', safeString(err.message ?? err));
   }
+
+  await checkEmail();
 
   // ALWAYS close the connection, including when the check failed. A failed
   // check can still have opened a socket, and an open Mongoose connection keeps
