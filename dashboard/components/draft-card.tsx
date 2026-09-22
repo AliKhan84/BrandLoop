@@ -74,9 +74,9 @@ export function DraftCard({ post, showTheme = false }: { post: Post; showTheme?:
    * that is what the user is about to paste. Copying the body alone would
    * silently drop the hashtags.
    *
-   * Writes HTML alongside the text (`lib/clipboard.ts`) so paragraphs and list
-   * items survive a paste into LinkedIn, which renders no markdown and would
-   * otherwise show a hyphen where a bullet belongs.
+   * Writes plain text (`lib/clipboard.ts`), because LinkedIn reflows the HTML
+   * flavour on paste and loses the paragraph breaks. The spacing and bullets are
+   * in the string itself, which is what survives.
    *
    * @returns Resolves once the attempt finishes, successful or not.
    * @sideeffect Writes to the clipboard; shows a toast.

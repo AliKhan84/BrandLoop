@@ -30,13 +30,12 @@ import { cn } from '@/lib/utils';
  * click handler, so the user gesture still covers it. Opening first and copying
  * after would lose the gesture and the copy would be refused.
  *
- * ## Why the clipboard write carries HTML as well as text
+ * ## Why the clipboard write is plain text
  *
- * A plain-text write gives LinkedIn characters and nothing else: no paragraphs,
- * and a `-` that stays a hyphen because a paste never triggers its list
- * detection. Writing both flavours means the editor receives real paragraphs and
- * list items. See `lib/clipboard.ts` — the drafts page uses the same helper, so
- * both copy buttons behave identically.
+ * Both flavours were written at first, so LinkedIn could receive real list and
+ * paragraph elements. It reflows them on paste and drops the breaks, so a
+ * correctly formatted draft arrived as one block. Plain text keeps its newlines;
+ * the formatting lives in the string. See `lib/clipboard.ts`.
  *
  * @param props - Component props.
  * @param props.text - The exact text to put on the clipboard.
