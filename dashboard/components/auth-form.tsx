@@ -52,6 +52,32 @@ export function AuthForm({
 
   return (
     <form action={formAction} className="flex flex-col gap-6" noValidate>
+      {/*
+        Google sign-in, offered first because it is the shorter path: no password
+        to choose, and the address arrives already verified.
+
+        A real `<a>`, not a `<Button render={<a/>}>`. The navigation is the whole
+        behaviour — the route sets a state cookie and redirects — so a native link
+        is the honest element, and it cannot produce the Base UI `render` warning
+        this project spent a commit clearing.
+
+        Shown unconditionally: with no credentials the route answers with a
+        redirect back to this form carrying `error=google-not-configured`, which is
+        a clearer explanation than a button that silently is not there.
+      */}
+      <a
+        href="/api/auth/google"
+        className="border-border hover:bg-accent focus-visible:ring-ring flex h-11 w-full items-center justify-center rounded-md border text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:outline-none"
+      >
+        Continue with Google
+      </a>
+
+      <p className="text-muted-foreground -my-2 flex items-center gap-3 text-xs">
+        <span className="bg-border h-px flex-1" aria-hidden="true" />
+        or
+        <span className="bg-border h-px flex-1" aria-hidden="true" />
+      </p>
+
       {isSignUp && (
         <div className="flex flex-col gap-2">
           <Label htmlFor="name">Name</Label>
