@@ -244,6 +244,24 @@ export async function verifyEmail(token: string): Promise<{ user: User; emailVer
 }
 
 /**
+ * Signs in with a Google authorization code.
+ *
+ * The code is exchanged by the API, not here: that is where the client secret
+ * lives, and identity is the API's job. This call is public — there is no token
+ * yet, which is the whole point of it.
+ *
+ * @param code - The one-time `code` Google redirected back with.
+ * @returns The account and a session JWT, plus whether it was just created.
+ * @throws {ApiError} On an expired code, a misconfigured client, or an outage.
+ * @sideeffect Signs the user in on the API side of the exchange.
+ */
+export async function googleSignIn(
+  code: string,
+): Promise<{ user: User; token: string; created: boolean }> {
+  return request('/api/auth/google', { method: 'POST', body: { code } });
+}
+
+/**
  * Asks the API to send a fresh verification link.
  *
  * @param token - The session JWT.
