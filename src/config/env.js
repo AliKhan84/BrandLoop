@@ -137,6 +137,21 @@ const envSchema = z.object({
   // How long a `/connect` code stays valid before the user must request a new one.
   DISCORD_LINK_CODE_TTL_MIN: z.coerce.number().int().positive().default(15),
 
+  // ── Google sign-in (optional) ────────────────────────────────────────────
+  // All three are required together — see `isGoogleConfigured` in
+  // services/auth/googleSignIn.js. With none of them set, the sign-in button is
+  // hidden and the endpoint answers 503, so an unconfigured deployment is a
+  // missing feature rather than a broken one.
+  //
+  // The redirect URI must match, character for character, the one registered on
+  // the OAuth client in Google Cloud Console — including the absence of a
+  // trailing slash. A mismatch is Google's `redirect_uri_mismatch`, which it
+  // reports on the consent screen rather than in the log, so it reads like a
+  // user error.
+  GOOGLE_CLIENT_ID: z.string().trim().optional(),
+  GOOGLE_CLIENT_SECRET: z.string().trim().optional(),
+  GOOGLE_REDIRECT_URI: z.string().trim().optional(),
+
   // ── Scheduler ────────────────────────────────────────────────────────────
   // Default is 09:00 daily. Overridable for demos so a run can be forced.
   CRON_DAILY_POST_SCHEDULE: z.string().trim().default('0 9 * * *'),

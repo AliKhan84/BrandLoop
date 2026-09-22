@@ -28,6 +28,7 @@ import { signToken, requireAuth } from '../middleware/auth.js';
 import { validateBody } from '../middleware/validate.js';
 import { generateLinkCode } from './linkCode.js';
 import { issueVerification, consumeVerification, loadForResend } from '../services/email/verification.js';
+import { exchangeCodeForProfile } from '../services/auth/googleSignIn.js';
 import { resendAllowedAt } from '../utils/emailToken.js';
 import { ApiError } from '../utils/ApiError.js';
 import { VALID_POST_FREQUENCIES, VALID_PLAN_DURATIONS, PLAN_TIER, SIGNUP_TRIAL_DAYS } from '../config/constants.js';
@@ -156,6 +157,91 @@ router.post('/login', validateBody(loginSchema), async (req, res) => {
   res.json({
     user: user.toPublicJSON(),
     token: signToken(user),
+  });
+});
+
+/**
+ * Google sign-in payload — the one-time code from the redirect.
+ *
+ * The code, not an ID token: the exchange happens here so the client secret
+ * never leaves the API. See services/auth/googleSignIn.js.
+ */
+const googleSchema = z.object({
+  code: z.string().trim().min(10, 'A Google authorization code is required.'),
+});
+
+/**
+ * POST /api/auth/google — signs in with a Google account, creating it if new.
+ *
+ * WHY ACCOUNTS ARE MATCHED BY EMAIL
+ *   Google's `email_verified` is a stronger claim than any password we could
+ *   store, so an existing password account with the same address is treated as
+ *   the same person and simply gains a second way in. The alternative — a
+ *   separate Google account per address — gives one human two accounts and two
+ *   sets of quotas, which is worse in every direction.
+ *
+ *   The consequence is deliberate and worth stating: if someone signs up with a
+ *   password using an address they do not own, whoever owns it can later sign in
+ *   with Google and take over that account. Email ownership is the identity
+ *   claim this product makes, and Google is a better authority on it than we are.
+ *
+ * @param {import('express').Request} req - Validated body carrying `code`.
+ * @param {import('express').Response} res - 201 when a new account was created,
+ *   200 when an existing one signed in. Both return the user and a token.
+ * @returns {Promise<void>}
+ * @throws {ApiError} 503 when Google is not configured, 400 when the code or
+ *   token is not acceptable, 403 when the account is deactivated.
+ * @sideeffect May create a user document, and one request to Google.
+ */
+router.post('/google', validateBody(googleSchema), async (req, res) => {
+  const profile = await exchangeCodeForProfile(req.body.code);
+
+  let user = await User.findOne({ email: profile.email });
+  let created = false;
+
+  if (!user) {
+    user = new User({
+      email: profile.email,
+      name: profile.name,
+      niche: '',
+      inputPoints: [],
+      postFrequency: 3,
+      defaultPlanDuration: 7,
+      // Google has already proven the address, so asking this account to confirm
+      // it by email would be asking it to confirm something we were just told.
+      emailVerified: profile.emailVerified,
+    });
+
+    // The same trial as a password signup, applied at the one place accounts are
+    // created so the two paths cannot drift apart.
+    if (SIGNUP_TRIAL_DAYS > 0) {
+      user.plan = PLAN_TIER.PRO;
+      user.planExpiresAt = new Date(Date.now() + SIGNUP_TRIAL_DAYS * 24 * 60 * 60 * 1000);
+      user.signupTrialAppliedAt = new Date();
+    }
+
+    await user.save();
+    created = true;
+
+    logger.info(`Registered user ${user._id} (${profile.email}) via Google`);
+  } else {
+    if (!user.isActive) {
+      throw ApiError.forbidden('This account is deactivated.');
+    }
+
+    // An existing unverified account that arrives through Google is verified as a
+    // side effect — it has just proven the address it was asked to prove.
+    if (!user.emailVerified && profile.emailVerified) {
+      user.emailVerified = true;
+      await user.save();
+      logger.info(`Marked ${user.email} verified via Google sign-in`);
+    }
+  }
+
+  res.status(created ? 201 : 200).json({
+    user: user.toPublicJSON(),
+    token: signToken(user),
+    created,
   });
 });
 
