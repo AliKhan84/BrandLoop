@@ -114,10 +114,13 @@ export function UserMenu({ user, compact = false }: { user: User; compact?: bool
 
           <form action={signOutAction}>
             <DropdownMenuItem
-              // `MenuItem` already defaults `nativeButton` to false, and the
-              // element below is a real submit button, so no override is needed
-              // here — unlike Base UI's `Button`, which defaults it to true and
-              // complains when handed an anchor.
+              // `nativeButton` is required here, not optional. Base UI's item
+              // defaults it to `false`, which means "this is not a real button,
+              // so strip the button semantics and apply my own" — handing it an
+              // actual `<button>` in that state is the mismatch the console
+              // warns about. The earlier comment here claimed the opposite and
+              // was simply wrong; the menu had never rendered, so nobody saw it.
+              nativeButton
               render={<button type="submit" className="w-full" />}
               variant="destructive"
             >
