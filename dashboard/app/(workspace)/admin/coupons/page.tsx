@@ -29,7 +29,29 @@ export default async function AdminCouponsPage() {
     throw err;
   }
 
-  if (user.role !== 'admin') notFound();
+  // A non-admin gets an explanation, not a 404. The usual instinct is to hide
+  // the page's existence, but the most likely visitor is the operator whose own
+  // account has not been promoted yet — and to them this 404 is indistinguishable
+  // from a typo'd URL, with the one-line fix invisible. The API refuses the data
+  // either way.
+  if (user.role !== 'admin') {
+    return (
+      <div className="mx-auto flex max-w-2xl flex-col gap-4">
+        <h1 className="text-xl font-semibold tracking-tight">Admin access required</h1>
+        <p className="text-muted-foreground text-sm leading-relaxed">
+          This account is a normal user, so the admin pages stay hidden. Promote it once from the
+          project folder — it takes effect immediately, with no sign-out, because the role is read
+          from the database on every request:
+        </p>
+        <pre className="border-border bg-card overflow-x-auto rounded-lg border px-4 py-3 text-xs">
+          npm run make-admin -- --email {user.email}
+        </pre>
+        <p className="text-muted-foreground text-xs leading-relaxed">
+          Then reload this page. To undo it, run the same command with <code>--revoke</code>.
+        </p>
+      </div>
+    );
+  }
 
   const coupons = await listCoupons(token);
 
