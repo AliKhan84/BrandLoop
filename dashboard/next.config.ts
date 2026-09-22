@@ -21,6 +21,16 @@ const nextConfig: NextConfig = {
     root: path.resolve(__dirname),
   },
   output: 'standalone',
+  /**
+   * The floating dev-tools button is disabled.
+   *
+   * It renders bottom-left — precisely on top of the sidebar's account row — so
+   * clicking the avatar opened Next's own panel (Route, Bundler, Preferences)
+   * instead of the account menu, and "Sign out" looked like it did not exist.
+   * Only a development artefact, but it hides a real control, and a control that
+   * appears missing is worse than one that is merely plain.
+   */
+  devIndicators: false,
 };
 
 export default nextConfig;

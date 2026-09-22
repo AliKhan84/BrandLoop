@@ -54,7 +54,10 @@ export function UserMenu({ user, compact = false }: { user: User; compact?: bool
           <Button
             variant="ghost"
             className={cn(
-              'h-auto gap-3 px-2 py-2',
+              // `px-3` to match the nav items above it. At `px-2` the avatar sat
+              // four pixels left of every nav icon, which reads as a misaligned
+              // row rather than a deliberate grouping.
+              'h-auto gap-3 px-3 py-2',
               // `w-full` only where there is a full-width column to fill.
               compact ? 'w-auto' : 'w-full justify-start',
             )}
@@ -63,7 +66,9 @@ export function UserMenu({ user, compact = false }: { user: User; compact?: bool
         }
       >
         <span
-          className="bg-primary text-primary-foreground flex size-8 shrink-0 items-center justify-center rounded-full text-sm font-semibold"
+          // `leading-none` because the line box otherwise pushes the initial up
+          // by a pixel or two inside a circle this small.
+          className="bg-primary text-primary-foreground flex size-8 shrink-0 items-center justify-center rounded-full text-sm leading-none font-semibold"
           aria-hidden="true"
         >
           {initial}
