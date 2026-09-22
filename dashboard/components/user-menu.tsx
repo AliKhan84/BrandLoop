@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -85,34 +86,46 @@ export function UserMenu({ user, compact = false }: { user: User; compact?: bool
       </DropdownMenuTrigger>
 
       <DropdownMenuContent align="end" side={compact ? 'bottom' : 'top'} className="w-56">
-        {/* The full identity, which the compact trigger does not have room for. */}
-        <DropdownMenuLabel className="flex flex-col gap-0.5">
-          <span className="text-sm font-medium">{user.name?.trim() || 'Your account'}</span>
-          <span className="text-muted-foreground text-xs font-normal">{user.email}</span>
-        </DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        <DropdownMenuLabel className="text-muted-foreground text-xs font-normal">
-          {user.discordLinked ? 'Discord linked' : 'Discord not linked'}
-        </DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem render={<a href="/settings" />}>
-          <UserIcon className="size-4" aria-hidden="true" />
-          Profile settings
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <form action={signOutAction}>
-          <DropdownMenuItem
-            // `MenuItem` already defaults `nativeButton` to false, and the
-            // element below is a real submit button, so no override is needed
-            // here — unlike Base UI's `Button`, which defaults it to true and
-            // complains when handed an anchor.
-            render={<button type="submit" className="w-full" />}
-            variant="destructive"
-          >
-            <LogOut className="size-4" aria-hidden="true" />
-            Sign out
+        {/*
+          Both labels must sit inside a group. `DropdownMenuLabel` renders Base
+          UI's `GroupLabel`, which throws "MenuGroupContext is missing" when it
+          has no group above it — and because this menu had never successfully
+          opened, the error was waiting for the first person to click the avatar.
+        */}
+        <DropdownMenuGroup>
+          {/* The full identity, which the compact trigger has no room for. */}
+          <DropdownMenuLabel className="flex flex-col gap-0.5">
+            <span className="text-sm font-medium">{user.name?.trim() || 'Your account'}</span>
+            <span className="text-muted-foreground text-xs font-normal">{user.email}</span>
+          </DropdownMenuLabel>
+
+          <DropdownMenuItem render={<a href="/settings" />}>
+            <UserIcon className="size-4" aria-hidden="true" />
+            Profile settings
           </DropdownMenuItem>
-        </form>
+        </DropdownMenuGroup>
+
+        <DropdownMenuSeparator />
+
+        <DropdownMenuGroup>
+          <DropdownMenuLabel className="text-muted-foreground text-xs font-normal">
+            {user.discordLinked ? 'Discord linked' : 'Discord not linked'}
+          </DropdownMenuLabel>
+
+          <form action={signOutAction}>
+            <DropdownMenuItem
+              // `MenuItem` already defaults `nativeButton` to false, and the
+              // element below is a real submit button, so no override is needed
+              // here — unlike Base UI's `Button`, which defaults it to true and
+              // complains when handed an anchor.
+              render={<button type="submit" className="w-full" />}
+              variant="destructive"
+            >
+              <LogOut className="size-4" aria-hidden="true" />
+              Sign out
+            </DropdownMenuItem>
+          </form>
+        </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   );
