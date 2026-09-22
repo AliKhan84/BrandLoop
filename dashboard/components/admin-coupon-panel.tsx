@@ -77,16 +77,29 @@ export function AdminCouponPanel({ coupons }: { coupons: Coupon[] }) {
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="durationDays">Days</Label>
-              <Input
+              <Label htmlFor="durationDays">Duration</Label>
+              {/*
+                A preset list rather than a raw day count. "180" makes the
+                operator do date arithmetic to answer a question they are
+                actually asking in months, and a wrong number here is a grant
+                that quietly ends early — the kind of mistake nobody notices
+                until a customer does.
+
+                The empty value means forever, which is what the server action
+                already does with an empty field: `null`, never zero.
+              */}
+              <select
                 id="durationDays"
                 name="durationDays"
-                type="number"
-                min={1}
-                inputMode="numeric"
-                placeholder="forever"
-                className="h-9"
-              />
+                defaultValue=""
+                className="border-input bg-background h-9 rounded-md border px-2 text-sm"
+              >
+                <option value="">Forever (no expiry)</option>
+                <option value="30">1 month</option>
+                <option value="90">3 months</option>
+                <option value="180">6 months</option>
+                <option value="365">1 year</option>
+              </select>
             </div>
 
             <div className="flex flex-col gap-1.5">
