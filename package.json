@@ -15,6 +15,7 @@
     "probe": "node scripts/probe.js",
     "seed": "node scripts/seed.js",
     "make-admin": "node scripts/make-admin.js",
+    "normalize-posts": "node scripts/normalize-posts.mjs",
     "test": "node --test"
   },
   "dependencies": {
