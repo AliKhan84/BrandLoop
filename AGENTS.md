@@ -54,6 +54,14 @@ five bugs found only by running the thing end to end.
 **Phase 1 — the whole loop, working end to end.**
 
 - Auth: register, login, JWT in an httpOnly cookie, bcrypt hashing.
+- Google sign-in, optional and off unless `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
+  and `GOOGLE_REDIRECT_URI` are all set. The API does the code exchange, so the
+  client secret never reaches the dashboard; the dashboard holds the public client
+  ID and derives the redirect URI from its own address. Accounts are matched by
+  verified email, so a password account and a Google sign-in with the same address
+  are one account, and an unverified one is verified by the act of signing in.
+  A `state` cookie is checked on the way back — without it, a callback URL carrying
+  someone else's code would sign the victim in as the attacker.
 - Content plans: generation, 7/30-day windows, per-slot themes, a planned/news mix.
 - News sourcing from Google News RSS — real URLs only, so citation hallucination
   is structurally impossible. Personalisation happens at *selection*, not in the
@@ -307,6 +315,19 @@ like nothing is wrong. Iterate `client.guilds.cache` instead; it holds real
 `Guild` objects and is complete by `clientReady`. Any other place that reaches
 for the API to enumerate guilds has the same trap.
 
+**6.12 Nothing in the test suite imported a router, so a broken import in the
+auth path passed all 230 tests — and would have stopped the API from booting.**
+A new service under `src/services/auth/` imported `../utils/ApiError.js`, which
+resolves to `src/services/utils/` and does not exist. Module resolution happens
+at import time, so the failure had no earlier symptom than the process that
+imports it — and the API imports every router at startup. It was caught by a
+hand-typed `node -e "import('./src/routes/authRoutes.js')"`, which is now
+`tests/module-loads.test.js`: it imports every file in `src/routes/` and
+`src/services/`. Loading a module does not prove it works; it proves it exists,
+which is the class of mistake `tsc` cannot see in plain JavaScript and a suite
+that never touches the entry points misses entirely. Any new directory of
+modules deserves the same two lines.
+
 ---
 
 ## 7. Running it
@@ -314,7 +335,7 @@ for the API to enumerate guilds has the same trap.
 ```bash
 # root — API on 8080
 npm start            # or: npm run dev (nodemon)
-npm test             # node --test, 156 tests
+npm test             # node --test, 246 tests
 npm run probe        # validates the AI models and every credential
                      # `npm run probe -- --images` also generates one for real
 npm run seed         # demo account: demo@brandloop.local / demo-password-123
@@ -388,7 +409,12 @@ key. Never commit it, never log it.
 
 `.env.example` is the template. **Keep it in sync** — it documents every
 required and optional value, including `DASHBOARD_BASE_URL` (the LinkedIn
-copy-and-open page) and `IMAGE_MODEL` (Phase 3).
+copy-and-open page), `IMAGE_MODEL` (Phase 3) and the `GOOGLE_*` trio (sign-in).
+Two notes on the Google values: the client ID is public by design and so appears
+in both `.env` files, while the secret is only in the root one; and the redirect
+URI must match the console registration character for character, because a
+mismatch surfaces as `redirect_uri_mismatch` on Google's own screen rather than
+in any log of ours.
 
 Model names live in env, never hardcoded in `src/` — the catalog moves fast and
 `npm run probe` is the single place that validates them.

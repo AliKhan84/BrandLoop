@@ -85,7 +85,16 @@ export default async function RootLayout({ children }: LayoutProps<'/'>) {
       data-theme={theme === 'system' ? undefined : theme}
       className={`${geistSans.variable} ${geistMono.variable} ${sourceSerif.variable}`}
     >
-      <body className="bg-background text-foreground min-h-full antialiased">
+      {/*
+        `suppressHydrationWarning` is on `<body>` for the same reason it is on
+        `<html>`: browser extensions rewrite this element before React hydrates.
+        Grammarly adds `data-new-gr-c-s-check-loaded` and `data-gr-ext-installed`,
+        which React then reports as a mismatch it cannot patch — pointing at our
+        markup for something we did not write. The attribute is inherited by
+        nothing and hides no real mismatch, because nothing in this tree renders
+        an attribute on `body` at all.
+      */}
+      <body className="bg-background text-foreground min-h-full antialiased" suppressHydrationWarning>
         <ThemeProvider initialTheme={theme}>
           {children}
           {/* Mounted at the root so any route can raise a toast without

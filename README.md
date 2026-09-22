@@ -180,3 +180,31 @@ user). Any of those three would replace a seam that already exists; none is
 half-started.
 
 Built by Ali Khan as an Applied AI & ML course project.
+
+## Signing in
+
+Two ways in, and they lead to the same account when the address matches:
+
+- **Email and password.** The address is unconfirmed until the link in the
+  verification email is used, but nothing is gated behind it — an unconfirmed
+  account works normally and the dashboard asks it to confirm.
+- **Google.** Optional, and off until `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
+  and `GOOGLE_REDIRECT_URI` are all set. With none of them the button reports
+  that sign-in is not configured rather than failing silently.
+
+The API performs the exchange with Google, so the client secret never reaches the
+dashboard; it holds only the client ID, which is public because it travels in a
+URL the browser visits. New accounts created this way arrive already verified and
+receive the same `SIGNUP_TRIAL_DAYS` of Pro as a password signup.
+
+Setup, once, in Google Cloud Console: create a project, configure the OAuth
+consent screen as External, add your own address under **Test users** (in Testing
+mode nothing else can sign in), then create an OAuth client of type **Web
+application** with this authorised redirect URI:
+
+```
+http://localhost:3000/api/auth/google/callback
+```
+
+Put the resulting client ID and secret in `.env`, and the client ID in
+`dashboard/.env.local` alongside `DASHBOARD_BASE_URL`.
