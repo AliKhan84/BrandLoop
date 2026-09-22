@@ -29,9 +29,9 @@
  * DOES NOT OWN: account creation, plan grants, or the session token.
  */
 
-import { ApiError } from '../utils/ApiError.js';
-import { env } from '../config/env.js';
-import { logger } from '../utils/logger.js';
+import { ApiError } from '../../utils/ApiError.js';
+import { env } from '../../config/env.js';
+import { logger } from '../../utils/logger.js';
 
 /** Google's token endpoint. Exported for the probe so it is not duplicated. */
 export const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
