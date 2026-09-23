@@ -7,6 +7,7 @@ import * as api from './api';
 import { ApiError } from './api';
 import { clearSessionToken, getSessionToken, setSessionToken } from './session';
 import type { ActionState } from './action-state';
+import type { PaymentMethod, PlanTier } from './types';
 
 /**
  * Server Actions for every write in the dashboard.
@@ -279,6 +280,129 @@ export async function setCouponActiveAction(
     const coupon = await api.setCouponActive(token, couponId, isActive);
     revalidatePath('/admin/coupons');
     return { error: null, success: `${coupon.code} ${isActive ? 'enabled' : 'disabled'}.` };
+  } catch (err) {
+    return toActionState(err);
+  }
+}
+
+/**
+ * Records a purchase claim.
+ *
+ * The success message is built from the account the API returns rather than from
+ * what was sent, because by default the plan is *already active* by the time this
+ * resolves. Telling the customer to wait for a human would be both untrue and the
+ * thing this design exists to avoid.
+ *
+ * @param _prev - Previous form state, supplied by `useActionState`.
+ * @param formData - The submitted claim form.
+ * @returns Form state describing what happened.
+ * @sideeffect Writes a claim through the API, and possibly the account.
+ */
+export async function submitPaymentAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const token = await getSessionToken();
+  if (!token) return { error: 'Your session has ended. Please sign in again.' };
+
+  const tier = String(formData.get('tier') ?? '');
+  const method = String(formData.get('method') ?? '');
+  const reference = String(formData.get('reference') ?? '').trim();
+
+  // Checked here as well as at the API, because this is the one field a human
+  // has to reconcile: catching it before the round trip is faster, and the API
+  // still refuses it.
+  if (reference.length < 4) {
+    return {
+      error: 'Enter the transaction ID from your transfer.',
+      fieldErrors: { reference: 'Enter the transaction ID from your transfer.' },
+    };
+  }
+
+  try {
+    const result = await api.createPayment(token, {
+      tier: tier as PlanTier,
+      method: method as PaymentMethod,
+      reference,
+      note: String(formData.get('note') ?? '').trim(),
+    });
+
+    // The plan, the quota meter and the claim history all read the account.
+    revalidatePath('/', 'layout');
+
+    if (!result.account.active) {
+      return {
+        error: null,
+        success: `Claim received. We will confirm the transfer and switch ${result.payment.tierName} on.`,
+      };
+    }
+
+    const until = result.account.planExpiresAt
+      ? ` until ${new Date(result.account.planExpiresAt).toLocaleDateString()}`
+      : '';
+
+    return {
+      error: null,
+      success: `${result.payment.tierName} is active${until}. We are confirming your transfer — nothing else is needed from you.`,
+    };
+  } catch (err) {
+    return toActionState(err);
+  }
+}
+
+/**
+ * Settles a payment claim. Admin only.
+ *
+ * The success message names what happened to the account, because confirming a
+ * revocation and confirming a payment produce the same shape of response and
+ * must not read alike.
+ *
+ * @param _prev - Previous form state.
+ * @param formData - The submitted row, carrying `paymentId`, `decision` and `note`.
+ * @returns Form state.
+ * @sideeffect Writes the claim, and the account for verify or revoke.
+ */
+export async function reviewPaymentAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const token = await getSessionToken();
+  if (!token) return { error: 'Your session has ended. Please sign in again.' };
+
+  const paymentId = String(formData.get('paymentId') ?? '');
+  const decision = String(formData.get('decision') ?? '');
+  const allowed = ['verify', 'reject', 'confirm', 'revoke'] as const;
+  type Decision = (typeof allowed)[number];
+
+  if (!allowed.includes(decision as Decision)) {
+    return { error: 'Choose what to do with this claim.' };
+  }
+
+  try {
+    const { payment, account } = await api.reviewPayment(
+      token,
+      paymentId,
+      decision as Decision,
+      String(formData.get('note') ?? '').trim(),
+    );
+
+    revalidatePath('/admin/payments');
+    revalidatePath('/', 'layout');
+
+    if (decision === 'confirm') {
+      return { error: null, success: `${payment.user?.email ?? 'That claim'} confirmed.` };
+    }
+    if (decision === 'reject') {
+      return { error: null, success: 'Rejected — nothing had been granted, so nothing changes.' };
+    }
+
+    const until = account.planExpiresAt
+      ? ` until ${new Date(account.planExpiresAt).toLocaleDateString()}`
+      : '';
+
+    return decision === 'revoke'
+      ? { error: null, success: `Revoked — ${payment.user?.email ?? 'the account'} is back on ${account.plan}${until}.` }
+      : { error: null, success: `${payment.tierName} granted to ${payment.user?.email ?? 'the account'}${until}.` };
   } catch (err) {
     return toActionState(err);
   }

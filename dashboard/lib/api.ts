@@ -1,6 +1,7 @@
 import 'server-only';
 
 import type {
+  AdminPayment,
   BillingSummary,
   ContentPlan,
   ContentPlanSummary,
@@ -11,6 +12,9 @@ import type {
   FeedbackStatus,
   GenerateResult,
   LinkCode,
+  Payment,
+  PaymentMethod,
+  PaymentOptions,
   Platform,
   PlanTier,
   Post,
@@ -385,6 +389,98 @@ export async function setCouponActive(
     body: { isActive },
   });
   return coupon;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Payments
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Loads where to pay, what is available, and this account's own claims.
+ *
+ * One call for the pay page: the instructions, the account's tier and the claim
+ * history are all needed at once, and the page cannot draw a form without all
+ * three.
+ *
+ * @param token - The session JWT.
+ * @returns The options, the account's position, and the caller's claims.
+ * @throws {ApiError} 401 when the token is rejected.
+ * @sideeffect none (read-only)
+ */
+export async function getPayments(token: string): Promise<{
+  options: PaymentOptions;
+  account: { plan: PlanTier; planExpiresAt: string | null };
+  payments: Payment[];
+}> {
+  return request('/api/payments', { token });
+}
+
+/**
+ * Records a purchase claim.
+ *
+ * The account half of the answer matters as much as the claim: by default the
+ * plan is already active when this returns, and the success message says so
+ * rather than telling the customer to wait.
+ *
+ * @param token - The session JWT.
+ * @param input - What was bought, how it was paid, and the transaction reference.
+ * @returns The claim, and the account's state after it.
+ * @throws {ApiError} 400 when payments are off or the method is not offered, 409
+ *   for a downgrade or a claim that is still unsettled.
+ * @sideeffect Writes a claim, possibly the account, and notifies admins.
+ */
+export async function createPayment(
+  token: string,
+  input: { tier: PlanTier; method: PaymentMethod; reference: string; note?: string },
+): Promise<{
+  payment: Payment;
+  account: { plan: PlanTier; planExpiresAt: string | null; active: boolean };
+}> {
+  return request('/api/payments', { method: 'POST', token, body: input });
+}
+
+/**
+ * Lists claims for the reconciliation queue. Admin only.
+ *
+ * @param token - The session JWT.
+ * @param status - `awaiting` (the default at the API), a settled status, or `all`.
+ * @returns The claims, each with its account attached.
+ * @throws {ApiError} 403 when the caller is not an administrator.
+ * @sideeffect none (read-only)
+ */
+export async function listPayments(
+  token: string,
+  status: 'awaiting' | 'verified' | 'rejected' | 'revoked' | 'all' = 'awaiting',
+): Promise<AdminPayment[]> {
+  const { payments } = await request<{ payments: AdminPayment[] }>(
+    `/api/admin/payments?status=${encodeURIComponent(status)}`,
+    { token },
+  );
+  return payments;
+}
+
+/**
+ * Settles a claim. Admin only.
+ *
+ * @param token - The session JWT.
+ * @param paymentId - The claim to settle.
+ * @param decision - Grant, refuse, confirm the money arrived, or take the plan back.
+ * @param note - Optional reason, shown to the customer on a rejection or revoke.
+ * @returns The settled claim, and the account's state after the decision.
+ * @throws {ApiError} 409 when the decision does not fit the claim's state.
+ * @sideeffect Writes the claim, and the account for verify or revoke.
+ */
+export async function reviewPayment(
+  token: string,
+  paymentId: string,
+  decision: 'verify' | 'reject' | 'confirm' | 'revoke',
+  note: string,
+): Promise<{ payment: AdminPayment; account: { plan: PlanTier; planExpiresAt: string | null } }> {
+  return request(`/api/admin/payments/${paymentId}`, {
+    method: 'PATCH',
+    token,
+    body: { decision, note },
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

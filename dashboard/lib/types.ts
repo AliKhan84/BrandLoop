@@ -201,12 +201,106 @@ export type CouponKind = 'pro' | 'unlimited';
 export interface BillingPlan {
   tier: PlanTier;
   name: string;
+  /** The catalog's original USD figure. Not what a customer in Pakistan pays. */
   price: number;
+  /** What this deployment charges, in PKR. Zero for free. */
+  pricePkr: number;
+  /** Days one purchase buys, or null when the tier is not sold. */
+  durationDays: number | null;
   limits: Record<PlanQuotaKey, number>;
 }
 
 /** The quota keys the plan catalog prices. */
 export type PlanQuotaKey = 'planGenerations' | 'newsLookups' | 'images';
+
+/** How a customer can pay. Mirrors `PAYMENT_METHOD` in the API's constants. */
+export type PaymentMethod = 'bank' | 'jazzcash' | 'easypaisa';
+
+/**
+ * Where a purchase sits.
+ *
+ * `pending` covers two situations the UI must tell apart: with `grantedAt` set
+ * the plan is already live and only the transfer is unconfirmed, without it
+ * nothing has been granted and an operator still has to verify.
+ */
+export type PaymentStatus = 'pending' | 'verified' | 'rejected' | 'revoked';
+
+/** One way to pay, as the API describes it. */
+export interface PaymentMethodOption {
+  id: PaymentMethod;
+  label: string;
+  /** The account number, IBAN or wallet number to send money to. */
+  account: string;
+  /** Bank and holder for a bank transfer; usually empty for a wallet. */
+  detail: string;
+  hint: string;
+}
+
+/** One purchasable tier, with the price in the currency actually charged. */
+export interface PaymentPlanOption {
+  tier: PlanTier;
+  name: string;
+  pricePkr: number;
+  durationDays: number | null;
+}
+
+/** Where to pay and what can be bought, from `GET /api/payments`. */
+export interface PaymentOptions {
+  /** False when this deployment has no receiving account, or has switched it off. */
+  enabled: boolean;
+  configured: boolean;
+  /** True when a purchase activates on submit and is reconciled afterwards. */
+  autoVerify: boolean;
+  /** The window promised before a claim has been looked at. */
+  reviewHours: number;
+  contact: string;
+  notes: string;
+  methods: PaymentMethodOption[];
+  plans: PaymentPlanOption[];
+}
+
+/** A purchase claim, as its owner sees it. */
+export interface Payment {
+  id: string;
+  tier: PlanTier;
+  tierName: string;
+  durationDays: number;
+  amountPkr: number;
+  method: PaymentMethod;
+  /** The label for the method, as the API names it. */
+  methodLabel: string;
+  /** The transaction id the customer typed — what the operator reconciles. */
+  reference: string;
+  note: string;
+  status: PaymentStatus;
+  /** When the plan was applied, or null when nothing has been granted yet. */
+  grantedAt: string | null;
+  grantedUntil: string | null;
+  reviewedAt: string | null;
+  /** The operator's reason. Shown to the customer on a rejection or revocation. */
+  reviewNote: string;
+  createdAt: string;
+}
+
+/** A claim as the reconciliation queue sees it. */
+export interface AdminPayment extends Payment {
+  userId: string;
+  /** The account, populated by the admin queue's query. */
+  user: {
+    id: string;
+    email: string;
+    name: string;
+    plan: PlanTier | null;
+    planExpiresAt: string | null;
+  } | null;
+  /** Always `manual` in this build; `gateway` is reserved for a processor. */
+  source: string;
+  /** True when the plan was granted at submit time without a human looking. */
+  autoVerified: boolean;
+  /** What the account was before the grant — what a revoke restores. */
+  previousPlan: PlanTier | null;
+  previousPlanExpiresAt: string | null;
+}
 
 /** The caller's own position, from `GET /api/billing`. */
 export interface BillingSummary {
@@ -221,6 +315,14 @@ export interface BillingSummary {
     unlimited: boolean;
     unlimitedUntil: string | null;
     couponCode: string | null;
+  };
+  /** Whether a purchase is possible, and what it would be like. */
+  payments: {
+    enabled: boolean;
+    configured: boolean;
+    autoVerify: boolean;
+    reviewHours: number;
+    contact: string;
   };
 }
 
