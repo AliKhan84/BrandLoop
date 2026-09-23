@@ -156,11 +156,10 @@ router.patch('/payments/:id', validateBody(reviewPaymentSchema), async (req, res
 
   res.json({
     payment: payment.toAdminJSON(),
-    // Null when the decision did not touch the account — a confirm or reject
-    // changes nothing about what the customer can do.
-    account: user
-      ? { plan: activeTier(user), planExpiresAt: user.planExpiresAt }
-      : null,
+    // The account as it stands after the decision, so a verify or a revoke shows
+    // its effect immediately rather than leaving the operator to open the
+    // customer's own page to find out what happened.
+    account: { plan: activeTier(user), planExpiresAt: user.planExpiresAt },
   });
 });
 

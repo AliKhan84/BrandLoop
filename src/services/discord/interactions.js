@@ -25,7 +25,17 @@
  * and overwrite the other's message. The status check inside `approvePost`
  * makes the second a no-op, so the button is safe to press twice.
  *
- * DOES NOT OWN: generation or publishing logic — both live in `planService`.
+ * ## Why payment buttons are the one thing here with a role check
+ *
+ * A draft DM goes to exactly one person, so being able to see it *is* the
+ * authorisation — that is why the approve and reject handlers never compare
+ * `interaction.user.id`. A payment notice is fanned out to every admin, so the
+ * same assumption would let any of them act, and it would be the wrong one the
+ * day an admin is demoted. `handlePaymentDecision` therefore re-reads the actor
+ * and requires the role, the same way `requireAdmin` does for HTTP.
+ *
+ * DOES NOT OWN: generation or publishing logic — both live in `planService` — or
+ * what settling a payment writes (`paymentService`).
  */
 
 import {
@@ -43,7 +53,9 @@ import { existsSync } from 'node:fs';
 import { Post } from '../../models/Post.js';
 import { User } from '../../models/User.js';
 import { parseCustomId } from './approvalQueue.js';
+import { buildReviewedPayload, parsePaymentCustomId } from './paymentQueue.js';
 import { imageFilenameFor, imageFilePathFor } from '../ai/imageGenerator.js';
+import { reviewPayment } from '../paymentService.js';
 import { approvePost, regeneratePost, rejectPost } from '../planService.js';
 import {
   DISCORD_CONTENT_LIMIT,
@@ -54,6 +66,7 @@ import {
   PLATFORM_LABELS,
   PLATFORM_LIMITS,
   POST_STATUS,
+  USER_ROLE,
 } from '../../config/constants.js';
 import { buildCopyBlock } from '../../utils/urlBuilder.js';
 import { logger } from '../../utils/logger.js';
@@ -322,6 +335,14 @@ async function handleEditSubmit(interaction, postId) {
  * @sideeffect May generate, publish, and edit messages.
  */
 async function handleButtonInteraction(interaction) {
+  // Two namespaces, tried in turn. Each parser rejects the other's ids, so a
+  // payment button can never be acted on by the draft path, or the reverse.
+  const payment = parsePaymentCustomId(interaction.customId);
+  if (payment) {
+    await handlePaymentDecision(interaction, payment);
+    return;
+  }
+
   const parsed = parseCustomId(interaction.customId);
   if (!parsed) return;
 
@@ -382,6 +403,83 @@ async function handleModalSubmit(interaction) {
   if (!parsed || parsed.action !== 'edit-submit') return;
 
   await handleEditSubmit(interaction, parsed.postId);
+}
+
+/**
+ * Settles a payment claim from the message an admin was sent.
+ *
+ * ## Why the actor is re-read rather than trusted
+ *
+ * This message is DM'd to every admin, so seeing it proves nothing about who is
+ * pressing. The role is read from the database — not from anything Discord
+ * supplies — for the same reason `requireAuth` reloads the user on every request:
+ * a demotion must take effect immediately, not at the end of some token's life.
+ *
+ * ## Why a lost race is not an error
+ *
+ * Two admins, or one admin in two places, will press the same button. The second
+ * press finds the claim settled and gets a 409 saying what it is now. That is the
+ * expected outcome of a well-designed concurrency guard, so it is reported as an
+ * ordinary message rather than as a failure to be investigated.
+ *
+ * @param {import('discord.js').ButtonInteraction} interaction - The button press.
+ * @param {object} parsed - The parsed custom id.
+ * @param {string} parsed.decision - One of `PAYMENT_DECISION`.
+ * @param {string} parsed.paymentId - The claim.
+ * @returns {Promise<void>}
+ * @sideeffect Writes the claim, possibly the customer's account, and edits the message.
+ */
+async function handlePaymentDecision(interaction, { decision, paymentId }) {
+  await interaction.deferUpdate();
+
+  try {
+    const actor = await User.findOne({ discordUserId: interaction.user.id });
+
+    if (!actor || actor.role !== USER_ROLE.ADMIN) {
+      logger.warn(
+        `Interaction: ${interaction.user.id} is not an admin and cannot ${decision} payment ${paymentId}`,
+      );
+      await interaction.editReply({
+        content: '⚠️ Only an administrator can settle a payment.',
+        embeds: [],
+        components: [],
+      });
+      return;
+    }
+
+    const { payment, user } = await reviewPayment({
+      paymentId,
+      decision,
+      reviewedBy: actor._id,
+    });
+
+    await interaction.editReply(
+      buildReviewedPayload(payment, `<@${interaction.user.id}>`, user),
+    );
+
+    logger.info(
+      `Interaction: payment ${paymentId} settled as ${payment.status} via Discord by ${actor.email}`,
+    );
+  } catch (err) {
+    const settledAlready = err?.statusCode === 409;
+
+    if (!settledAlready) {
+      logger.error(`Interaction: ${decision} failed for payment ${paymentId}`, err);
+    }
+
+    // The deferred state means the operator is looking at a stale message unless
+    // we say something. Discord may have timed the token out, so the reply is
+    // allowed to fail quietly.
+    await interaction
+      .editReply({
+        content: settledAlready
+          ? `⚠️ ${err.message}`
+          : '⚠️ Could not settle that payment. It is unchanged.',
+        embeds: [],
+        components: [],
+      })
+      .catch(() => {});
+  }
 }
 
 /**

@@ -465,8 +465,9 @@ export async function listPayments({ status = 'awaiting', limit = 100 } = {}) {
  * @param {string} params.decision - One of `PAYMENT_DECISION`.
  * @param {string|import('mongoose').Types.ObjectId} params.reviewedBy - The operator.
  * @param {string} [params.note] - Reason, shown to the customer on a rejection or revoke.
- * @returns {Promise<{payment: object, user: object|null, grant: object|null}>} The
- *   settled claim, and the account when the decision touched it.
+ * @returns {Promise<{payment: object, user: object, grant: object|null}>} The
+ *   settled claim, the account it belongs to, and the fields a verify or revoke
+ *   wrote — null for a decision that changed nothing about access.
  * @throws {ApiError} 404 for an unknown claim, 409 when the decision does not fit
  *   the claim's state.
  * @sideeffect Writes the claim, and the account for verify or revoke.
@@ -479,12 +480,19 @@ export async function reviewPayment({ paymentId, decision, reviewedBy, note = ''
   const payment = await Payment.findById(paymentId);
   if (!payment) throw ApiError.notFound('No such payment.');
 
+  // Loaded before the decision, not inside the branches that happen to need it:
+  // every surface that settles a claim names the account it belongs to, and a
+  // returned shape that sometimes carries the user would push that lookup back
+  // onto each caller.
+  const user = await User.findById(payment.userId);
+  if (!user) throw ApiError.notFound('The account for that payment no longer exists.');
+
   if (decision === PAYMENT_DECISION.CONFIRM) {
     const claimed = await Payment.claimConfirm({ paymentId, reviewedBy, note });
     if (!claimed) throw conflictFor(payment, decision);
 
     logger.info(`payment: ${claimed._id} confirmed by ${reviewedBy} (Rs ${claimed.amountPkr})`);
-    return { payment: claimed, user: null, grant: null };
+    return { payment: claimed, user, grant: null };
   }
 
   if (decision === PAYMENT_DECISION.REJECT) {
@@ -492,11 +500,8 @@ export async function reviewPayment({ paymentId, decision, reviewedBy, note = ''
     if (!claimed) throw conflictFor(payment, decision);
 
     logger.info(`payment: ${claimed._id} rejected by ${reviewedBy} — no plan was granted`);
-    return { payment: claimed, user: null, grant: null };
+    return { payment: claimed, user, grant: null };
   }
-
-  const user = await User.findById(payment.userId);
-  if (!user) throw ApiError.notFound('The account for that payment no longer exists.');
 
   if (decision === PAYMENT_DECISION.VERIFY) {
     const applied = await applyGrant({ payment, user, autoVerified: false, reviewedBy });

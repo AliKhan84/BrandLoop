@@ -214,11 +214,14 @@ export function buildPaymentButtons(payment) {
  * a dead control invites a second press and a support question.
  *
  * @param {object} payment - The settled claim.
- * @param {string} actorTag - Who decided, as a Discord tag.
+ * @param {string} actorTag - Who decided, as a Discord mention.
+ * @param {object|null} [account] - The account, when the caller has it loaded —
+ *   the settled claim carries only its id, and an operator reading a DM should
+ *   see an address rather than an ObjectId.
  * @returns {{content: string, embeds: EmbedBuilder[], components: never[]}} The payload.
  * @sideeffect none
  */
-export function buildReviewedPayload(payment, actorTag) {
+export function buildReviewedPayload(payment, actorTag, account = null) {
   const settled = payment.status === PAYMENT_STATUS.VERIFIED;
   const revoked = payment.status === PAYMENT_STATUS.REVOKED;
 
@@ -229,7 +232,10 @@ export function buildReviewedPayload(payment, actorTag) {
     .setColor(settled ? EMBED_COLOR.APPROVED : EMBED_COLOR.REJECTED)
     .setTitle(title)
     .addFields(
-      { name: 'Account', value: payment.user?.email ?? String(payment.userId) },
+      {
+        name: 'Account',
+        value: account?.email ?? payment.user?.email ?? String(payment.userId),
+      },
       { name: 'Amount', value: formatPkr(payment.amountPkr) },
       { name: 'Reference', value: `\`${payment.reference}\`` },
       { name: 'Effect on the account', value: describeGrant(payment) },
