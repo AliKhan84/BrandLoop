@@ -43,13 +43,26 @@ const userSchema = new Schema(
 
     /**
      * bcrypt hash of the password. Never the plaintext.
-     * `select: false` keeps it out of every query result by default, so it can
-     * only be read by explicitly asking for it — accidental exposure in an API
-     * response becomes impossible rather than merely unlikely.
+     *
+     * NOT REQUIRED, because an account created through Google has no password at
+     * all. Synthesising one would store a credential nobody chose, nobody can
+     * change, and which would look real to every future reader of this schema —
+     * a missing field says "this account has no password" where a random hash
+     * says nothing at all.
+     *
+     * It was required, and that made Google sign-in fail at the last step: the
+     * exchange succeeded, the profile came back, and creating the account threw
+     * a 500 on validation. Nothing about the error mentioned Google.
+     *
+     * `verifyPassword` returns false when this is absent, so a password-less
+     * account fails the password login closed rather than open. `select: false`
+     * keeps it out of every query result by default, so it can only be read by
+     * explicitly asking for it — accidental exposure in an API response becomes
+     * impossible rather than merely unlikely.
      */
     passwordHash: {
       type: String,
-      required: true,
+      default: null,
       select: false,
     },
 

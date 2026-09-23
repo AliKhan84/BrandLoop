@@ -142,6 +142,15 @@ router.post('/login', validateBody(loginSchema), async (req, res) => {
   // `passwordHash` is `select: false`, so it must be requested explicitly here.
   const user = await User.findOne({ email }).select('+passwordHash');
 
+  // An account with no stored hash was created through Google and has never had
+  // a password. Saying so is not an information leak worth worrying about — the
+  // same address already answers whether it exists via the register route — and
+  // the alternative is "Incorrect email or password" for a password that does
+  // not exist and cannot exist.
+  if (user && !user.passwordHash) {
+    throw ApiError.unauthorized('That account signs in with Google. Use the Google button instead.');
+  }
+
   // One message for both "no such user" and "wrong password". Distinguishing
   // them would let anyone enumerate which emails have accounts.
   const valid = user ? await user.verifyPassword(password) : false;
