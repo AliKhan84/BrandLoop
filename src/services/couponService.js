@@ -4,13 +4,12 @@
  * RESPONSIBILITY
  *   Turn a code into a grant on an account, exactly once per user.
  *
- * ## Why the grant is computed by a pure function
+ * ## Where the grant is computed
  *
- * `computeGrant` takes the coupon and the user and returns the fields to write,
- * with no database involved. That makes the interesting rules — extending an
- * existing Pro period rather than replacing it, what "forever" means for each
- * kind — testable without a database, which is the same reason `text.js` and
- * `emailToken.js` are pure.
+ * The arithmetic moved to `grantService.js` when purchases arrived, because both
+ * features end in the same act — extend or set a plan on an account — and the
+ * rule that matters most must not exist twice. It is re-exported here under its
+ * original name so every caller and its tests are unchanged.
  *
  * ## Why the claim happens before the grant is written
  *
@@ -28,11 +27,12 @@ import { randomInt } from 'node:crypto';
 
 import mongoose from 'mongoose';
 
-import { COUPON_KIND, PLAN_TIER, PLANS } from '../config/constants.js';
+import { COUPON_KIND } from '../config/constants.js';
 import { Coupon } from '../models/Coupon.js';
 import { User } from '../models/User.js';
 import { ApiError } from '../utils/ApiError.js';
 import { logger } from '../utils/logger.js';
+import { computeCouponGrant } from './grantService.js';
 
 /**
  * Characters a generated code may use.
@@ -118,46 +118,13 @@ export function isCouponRedeemable({ coupon, userId, now = new Date() }) {
 /**
  * Works out the fields a redemption should write onto the user.
  *
- * Extends rather than replaces: redeeming a second code while already on Pro
- * adds to the end of the current period instead of shortening it. A `null`
- * duration means the grant never lapses, which is why the plan field carries a
- * `null` expiry rather than a far-future date — an expiry that is not a date
- * should not look like one.
+ * A re-export rather than a copy: the arithmetic lives in `grantService.js`,
+ * where the purchase path can reach the same implementation. The name is kept
+ * because callers and tests have always imported it from here.
  *
- * @param {object} params
- * @param {object} params.coupon - The redeemed coupon.
- * @param {object|null} [params.user] - The current user, for extension rules.
- * @param {Date} [params.now] - Reference time.
- * @returns {{plan?: string, planExpiresAt?: Date|null, unlimited?: boolean, unlimitedUntil?: Date|null}}
- *   The fields to assign.
- * @sideeffect none (pure)
+ * @type {typeof import('./grantService.js').computeCouponGrant}
  */
-export function computeGrant({ coupon, user = null, now = new Date() }) {
-  const days = coupon.durationDays;
-  const milliseconds = days == null ? null : days * 24 * 60 * 60 * 1000;
-
-  /** Continues an existing period rather than overwriting it. */
-  const extendFrom = (current) => (current && current > now ? current : now);
-
-  if (coupon.kind === COUPON_KIND.UNLIMITED) {
-    let unlimitedUntil = null;
-    if (milliseconds != null) {
-      const base = user?.unlimited ? extendFrom(user.unlimitedUntil) : now;
-      unlimitedUntil = new Date(base.getTime() + milliseconds);
-    }
-    return { unlimited: true, unlimitedUntil };
-  }
-
-  // Pro. Two ways to already be on Pro: the same tier, or a previous grant that
-  // has not lapsed — either way the new days are added to the end.
-  const onPro = user?.plan === PLAN_TIER.PRO;
-  const base = onPro ? extendFrom(user?.planExpiresAt) : now;
-
-  return {
-    plan: PLAN_TIER.PRO,
-    planExpiresAt: milliseconds == null ? null : new Date(base.getTime() + milliseconds),
-  };
-}
+export const computeGrant = computeCouponGrant;
 
 /**
  * Creates a coupon.
@@ -287,7 +254,7 @@ export async function redeemCoupon({ code, userId }) {
   const user = await User.findById(userId);
   if (!user) throw ApiError.unauthorized('Account no longer exists.');
 
-  const grant = computeGrant({ coupon: claimed, user });
+  const grant = computeCouponGrant({ coupon: claimed, user });
   Object.assign(user, grant, { couponCode: claimed.code });
   await user.save();
 
