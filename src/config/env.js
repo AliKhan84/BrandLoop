@@ -152,6 +152,58 @@ const envSchema = z.object({
   GOOGLE_CLIENT_SECRET: z.string().trim().optional(),
   GOOGLE_REDIRECT_URI: z.string().trim().optional(),
 
+  // ── Payments (local, manually reconciled) ────────────────────────────────
+  // Every value here is optional, and with none of the account numbers below
+  // there is no way to pay at all — the billing page keeps its "not set up"
+  // state. That is the same shape as the SMTP block: an unconfigured deployment
+  // is a missing feature, never a broken one.
+  //
+  // WHY THERE IS NO CARD PATH: no processor is integrated. In Pakistan a gateway
+  // means a merchant account — company registration, NTN, a signed contract —
+  // which is the integration project this deliberately avoids. The customer pays
+  // directly, states the transaction reference, and the plan activates on submit;
+  // an operator reconciles the claim against their own statement afterwards and
+  // revokes it if the money is not there.
+  //
+  // These are account details, so they live in the environment rather than in
+  // the repository. Each non-empty field becomes a way to pay on the pay page.
+  PAYMENT_BANK_NAME: z.string().trim().optional(),
+  PAYMENT_BANK_ACCOUNT_NAME: z.string().trim().optional(),
+  PAYMENT_BANK_ACCOUNT_NUMBER: z.string().trim().optional(),
+  PAYMENT_JAZZCASH_NUMBER: z.string().trim().optional(),
+  PAYMENT_EASYPAISA_NUMBER: z.string().trim().optional(),
+  // Where a customer sends the receipt or asks a question. WhatsApp or an email
+  // address; shown on the pay page so a claim is never a dead end.
+  PAYMENT_CONTACT: z.string().trim().optional(),
+  // Free-text instructions shown alongside the account details, e.g. "put your
+  // BrandLoop email in the reference field".
+  PAYMENT_NOTES: z.string().trim().optional(),
+  // The window quoted to the customer before a claim is reconciled. A promise
+  // about the operator's own attention, not about the money taking that long.
+  PAYMENT_REVIEW_HOURS: z.coerce.number().int().positive().default(24),
+  // Days of access one purchase buys. Here rather than in the catalog because it
+  // is the operator's commercial decision, like the prices below.
+  PAYMENT_PLAN_DAYS: z.coerce.number().int().positive().default(30),
+  // The two prices actually charged, in PKR. Roughly the catalog's $5 / $10 at
+  // the rate this was written; edit them rather than editing code.
+  PRICE_CREATOR_PKR: z.coerce.number().int().nonnegative().default(1500),
+  PRICE_PRO_PKR: z.coerce.number().int().nonnegative().default(3000),
+  // Off switch for the whole feature, so the details below can stay in place
+  // while checkout is closed. Also requires a configured account (see
+  // PAYMENTS_CONFIGURED in loadEnv).
+  PAYMENTS_ENABLED: booleanFromEnv(true),
+  // THE ONE THAT DECIDES THE CUSTOMER'S EXPERIENCE.
+  //
+  // true (default): the plan activates the moment the claim is submitted, and
+  // the operator confirms or revokes it afterwards. Nobody waits for a human.
+  // false: nothing activates until an operator verifies — the older, slower
+  // shape, kept because it is the right one if the operator is being scammed.
+  PAYMENT_AUTO_VERIFY: booleanFromEnv(true),
+  // The ceiling under which a claim may activate unverified. Above it, a human
+  // always looks first. Defaults above both plans, so today every purchase is
+  // instant; a future annual plan can be exempt from that without a code change.
+  PAYMENT_AUTO_VERIFY_MAX_PKR: z.coerce.number().int().nonnegative().default(5000),
+
   // ── Scheduler ────────────────────────────────────────────────────────────
   // Default is 09:00 daily. Overridable for demos so a run can be forced.
   CRON_DAILY_POST_SCHEDULE: z.string().trim().default('0 9 * * *'),
@@ -272,6 +324,15 @@ function loadEnv() {
   // Throws early with a provider-specific message if the key is missing.
   const apiKey = resolveAiProviderKey(parsed);
 
+  // A payment page with nowhere to send money is worse than no payment page:
+  // it invites a customer to try and fails them at the last step. So the feature
+  // is off unless at least one receiving account exists, whatever the flag says.
+  const paymentsConfigured = Boolean(
+    parsed.PAYMENT_BANK_ACCOUNT_NUMBER
+      || parsed.PAYMENT_JAZZCASH_NUMBER
+      || parsed.PAYMENT_EASYPAISA_NUMBER,
+  );
+
   return Object.freeze({
     ...parsed,
     /** The resolved key for the active provider — never log this. */
@@ -295,6 +356,19 @@ function loadEnv() {
      * email code checks this one flag instead of four variables.
      */
     EMAIL_ENABLED: Boolean(parsed.SMTP_HOST && parsed.SMTP_USER && parsed.SMTP_PASS),
+    /**
+     * True when at least one receiving account is configured.
+     *
+     * Derived rather than configured, like EMAIL_ENABLED: the operator sets the
+     * account details, and the feature follows. Nothing else in the codebase has
+     * to check five fields to know whether money can be sent.
+     */
+    PAYMENTS_CONFIGURED: paymentsConfigured,
+    /**
+     * Both halves must hold: the operator has not switched payments off, and
+     * there is somewhere for a customer to pay.
+     */
+    PAYMENTS_ENABLED: parsed.PAYMENTS_ENABLED && paymentsConfigured,
   });
 }
 

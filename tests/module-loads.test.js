@@ -25,6 +25,7 @@ import test from 'node:test';
 
 const ROUTES_DIR = new URL('../src/routes/', import.meta.url);
 const SERVICES_DIR = new URL('../src/services/', import.meta.url);
+const MODELS_DIR = new URL('../src/models/', import.meta.url);
 
 /** Every `.js` file directly inside a directory. */
 function moduleFiles(dir) {
@@ -50,6 +51,25 @@ test('every service module imports', async (t) => {
   for (const file of files) {
     await t.test(file, async () => {
       await import(new URL(file, SERVICES_DIR).href);
+    });
+  }
+});
+
+/**
+ * Models are covered too, and for the same reason.
+ *
+ * A model nothing imports yet is the easiest place for a broken relative import
+ * to hide: the routers and services that will use it do not exist at the time it
+ * is written, so no earlier test loads it. Adding the model and its first
+ * consumer in the same sitting is exactly when that gap is open.
+ */
+test('every model module imports', async (t) => {
+  const files = moduleFiles(MODELS_DIR);
+  assert.ok(files.length > 0, 'no model modules found — has src/models moved?');
+
+  for (const file of files) {
+    await t.test(file, async () => {
+      await import(new URL(file, MODELS_DIR).href);
     });
   }
 });

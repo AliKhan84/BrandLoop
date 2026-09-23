@@ -246,6 +246,60 @@ export const COUPON_KIND = Object.freeze({
 });
 
 /**
+ * Lifecycle of a purchase claim.
+ *
+ * `pending` carries the interesting distinction: without `grantedAt` nothing has
+ * been given to the customer and an operator still has to verify; with it, the
+ * plan is already live and the operator's only job is to reconcile the money.
+ * Two states in one status, because they are the same point in the workflow —
+ * "not yet settled" — and splitting them would mean two ways to ask "what still
+ * needs attention".
+ */
+export const PAYMENT_STATUS = Object.freeze({
+  PENDING: 'pending',
+  /** The money was found. Nothing changes for the customer. */
+  VERIFIED: 'verified',
+  /** No money was found, and nothing had been granted. */
+  REJECTED: 'rejected',
+  /** The grant was taken back because the money never arrived. */
+  REVOKED: 'revoked',
+});
+
+/**
+ * How a customer can pay.
+ *
+ * Deliberately the three that need no merchant account: a bank transfer or Raast
+ * to an account number, or a transfer from either wallet. Every one of them is
+ * confirmed by a human reading their own statement, which is the honest limit of
+ * what can be automated without a processor contract.
+ */
+export const PAYMENT_METHOD = Object.freeze({
+  BANK: 'bank',
+  JAZZCASH: 'jazzcash',
+  EASYPAISA: 'easypaisa',
+});
+
+/** Display names for the payment methods, on the pay page and in the admin DM. */
+export const PAYMENT_METHOD_LABELS = Object.freeze({
+  [PAYMENT_METHOD.BANK]: 'Bank transfer / Raast',
+  [PAYMENT_METHOD.JAZZCASH]: 'JazzCash',
+  [PAYMENT_METHOD.EASYPAISA]: 'Easypaisa',
+});
+
+/**
+ * Where a claim came from.
+ *
+ * `manual` is the only value this build produces. `gateway` exists so that the
+ * day a processor is integrated, its webhook can write the same record and call
+ * the same grant path instead of introducing a second one — one field now, in
+ * place of a migration later.
+ */
+export const PAYMENT_SOURCE = Object.freeze({
+  MANUAL: 'manual',
+  GATEWAY: 'gateway',
+});
+
+/**
  * The plan catalog.
  *
  * ## Why the free tier reads env
@@ -257,12 +311,22 @@ export const COUPON_KIND = Object.freeze({
  *
  * These are the numbers the dashboard shows. It reads them from the API rather
  * than repeating them, so a price and its limits cannot drift apart.
+ *
+ * ## Why there are two prices
+ *
+ * `price` is the catalog's original USD figure and stays frozen, so nothing that
+ * already quoted it changes meaning. `pricePkr` is what this deployment actually
+ * charges, because the local payment methods are in rupees — and it is what the
+ * pay page and the claim record use. `durationDays` is null for free (nothing is
+ * sold) and the purchased term for the paid tiers.
  */
 export const PLANS = Object.freeze({
   [PLAN_TIER.FREE]: Object.freeze({
     tier: PLAN_TIER.FREE,
     name: 'Free',
     price: 0,
+    pricePkr: 0,
+    durationDays: null,
     limits: Object.freeze({
       [QUOTA_KEY.PLAN_GENERATIONS]: QUOTAS[QUOTA_KEY.PLAN_GENERATIONS].limit,
       [QUOTA_KEY.NEWS_LOOKUPS]: QUOTAS[QUOTA_KEY.NEWS_LOOKUPS].limit,
@@ -273,6 +337,8 @@ export const PLANS = Object.freeze({
     tier: PLAN_TIER.CREATOR,
     name: 'Creator',
     price: 5,
+    pricePkr: env.PRICE_CREATOR_PKR,
+    durationDays: env.PAYMENT_PLAN_DAYS,
     limits: Object.freeze({
       [QUOTA_KEY.PLAN_GENERATIONS]: 15,
       [QUOTA_KEY.NEWS_LOOKUPS]: 10,
@@ -283,6 +349,8 @@ export const PLANS = Object.freeze({
     tier: PLAN_TIER.PRO,
     name: 'Pro',
     price: 10,
+    pricePkr: env.PRICE_PRO_PKR,
+    durationDays: env.PAYMENT_PLAN_DAYS,
     limits: Object.freeze({
       [QUOTA_KEY.PLAN_GENERATIONS]: 40,
       [QUOTA_KEY.NEWS_LOOKUPS]: 20,
@@ -290,6 +358,31 @@ export const PLANS = Object.freeze({
     }),
   }),
 });
+
+/**
+ * How long a purchase's effect stays reversible, in the operator's words.
+ *
+ * Not a timer that revokes anything — a promise shown to the customer about how
+ * soon the operator will have looked at their statement.
+ */
+export const PAYMENT_REVIEW_HOURS = env.PAYMENT_REVIEW_HOURS;
+
+/**
+ * The order the tiers sit in, cheapest first.
+ *
+ * Used to answer "is this an upgrade, a renewal, or a downgrade" without
+ * repeating the ordering in every caller. A list rather than a number per tier
+ * so adding a tier means adding one entry in one place.
+ */
+export const TIER_RANK = Object.freeze([PLAN_TIER.FREE, PLAN_TIER.CREATOR, PLAN_TIER.PRO]);
+
+/**
+ * The tiers that can be bought.
+ *
+ * Free is not a purchase — it is what an account falls back to — and selling it
+ * would only be a way to take money for nothing.
+ */
+export const PURCHASABLE_TIERS = Object.freeze([PLAN_TIER.CREATOR, PLAN_TIER.PRO]);
 
 /**
  * Days of Pro every new signup receives.
@@ -435,6 +528,13 @@ export default {
   USER_ROLE,
   PLAN_TIER,
   COUPON_KIND,
+  PAYMENT_STATUS,
+  PAYMENT_METHOD,
+  PAYMENT_METHOD_LABELS,
+  PAYMENT_SOURCE,
+  PAYMENT_REVIEW_HOURS,
+  TIER_RANK,
+  PURCHASABLE_TIERS,
   PLANS,
   SIGNUP_TRIAL_DAYS,
   IMAGE_SIZES,
