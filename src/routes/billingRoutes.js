@@ -18,14 +18,22 @@
  *   value would let the page say "Pro" while the meter counted against free —
  *   the page must be able to say "Pro ended on the 3rd" instead.
  *
- * DOES NOT OWN: the limits themselves (`config/constants.js`) or any payment —
- * there is no checkout in this build, by design.
+ * ## Why the payment summary is here rather than on its own endpoint
+ *
+ *   Whether a plan can be bought at all decides what the cards *are*: a price to
+ *   press, or a label that says checkout is closed. The page would otherwise need
+ *   a second request before it could draw a single card — and could draw one
+ *   offering a purchase that the second request would then refuse.
+ *
+ * DOES NOT OWN: the limits themselves (`config/constants.js`) or what a purchase
+ * does (`services/paymentService.js`).
  */
 
 import { Router } from 'express';
 
 import { requireAuth } from '../middleware/auth.js';
 import { PLANS } from '../config/constants.js';
+import { getPaymentOptions } from '../services/paymentService.js';
 import { activeTier } from '../services/quotaService.js';
 
 const router = Router();
@@ -44,12 +52,17 @@ router.get('/', (req, res) => {
   const user = req.user;
   const effective = activeTier(user);
   const lapsed = Boolean(user.planExpiresAt && user.planExpiresAt <= new Date());
+  const payments = getPaymentOptions();
 
   res.json({
     plans: Object.values(PLANS).map((plan) => ({
       tier: plan.tier,
       name: plan.name,
       price: plan.price,
+      // The price actually charged, and the term it buys, so a card quotes the
+      // local figures rather than converting the USD one at some imagined rate.
+      pricePkr: plan.pricePkr,
+      durationDays: plan.durationDays,
       limits: plan.limits,
     })),
     current: {
@@ -62,6 +75,18 @@ router.get('/', (req, res) => {
       unlimited: Boolean(user.unlimited),
       unlimitedUntil: user.unlimitedUntil,
       couponCode: user.couponCode,
+    },
+    payments: {
+      enabled: payments.enabled,
+      configured: payments.configured,
+      autoVerify: payments.autoVerify,
+      reviewHours: payments.reviewHours,
+      /**
+       * Deliberately without the account numbers: this endpoint says whether a
+       * purchase is possible, and where to send the money belongs on the page
+       * that exists to take one.
+       */
+      contact: payments.contact,
     },
   });
 });

@@ -47,12 +47,12 @@ const createPaymentSchema = z.object({
 /**
  * GET /api/payments — where to pay, what it costs, and this account's claims.
  *
- * One request for the whole pay page: the options and the history are always
- * wanted together, and two calls would let the page render instructions for a
- * deployment whose payments were switched off between them.
+ * One request for the whole pay page: the options, the account's position and the
+ * history are always wanted together, and separate calls would let the page draw
+ * instructions for a deployment whose payments were switched off in between.
  *
  * @param {import('express').Request} req - Authenticated by `requireAuth`.
- * @param {import('express').Response} res - Responds 200 with both halves.
+ * @param {import('express').Response} res - Responds 200 with all three parts.
  * @returns {Promise<void>}
  * @sideeffect none (read-only)
  */
@@ -61,6 +61,14 @@ router.get('/', async (req, res) => {
 
   res.json({
     options: getPaymentOptions(),
+    account: {
+      /**
+       * The effective tier, not the stored one — a lapsed plan is free again, and
+       * the page decides what may be bought from this.
+       */
+      plan: activeTier(req.user),
+      planExpiresAt: req.user.planExpiresAt,
+    },
     payments: payments.map((payment) => payment.toPublicJSON()),
   });
 });

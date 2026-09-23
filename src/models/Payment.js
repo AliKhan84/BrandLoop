@@ -17,6 +17,10 @@
  *   `null` rather than a second write. Nothing here throws on a lost race,
  *   because losing one is normal, not exceptional.
  *
+ *   Each call asks for `returnDocument: 'after'`, matching `Usage.js` — the older
+ *   `new: true` spelling is deprecated in this Mongoose version, and a model
+ *   written against it starts warning the day the dependency moves.
+ *
  * ## Why the state that preceded a grant is stored on the claim
  *
  *   This build grants access on submit and reconciles afterwards
@@ -41,6 +45,7 @@ import mongoose from 'mongoose';
 
 import {
   PAYMENT_METHOD,
+  PAYMENT_METHOD_LABELS,
   PAYMENT_SOURCE,
   PAYMENT_STATUS,
   PLANS,
@@ -283,7 +288,7 @@ paymentSchema.statics.claimGrant = async function claimGrant({
       reviewedBy,
       reviewedAt: reviewedBy ? now : null,
     },
-    { new: true },
+    { returnDocument: 'after' },
   );
 };
 
@@ -306,7 +311,7 @@ paymentSchema.statics.releaseReview = async function releaseReview({ paymentId }
   return this.findOneAndUpdate(
     { _id: paymentId, status: PAYMENT_STATUS.REVOKED },
     { status: PAYMENT_STATUS.PENDING, reviewedBy: null, reviewedAt: null, reviewNote: '' },
-    { new: true },
+    { returnDocument: 'after' },
   );
 };
 
@@ -333,7 +338,7 @@ paymentSchema.statics.releaseGrantClaim = async function releaseGrantClaim({ pay
       previousPlanExpiresAt: null,
       autoVerified: false,
     },
-    { new: true },
+    { returnDocument: 'after' },
   );
 };
 
@@ -360,7 +365,7 @@ paymentSchema.statics.claimConfirm = async function claimConfirm({
   return this.findOneAndUpdate(
     { _id: paymentId, status: PAYMENT_STATUS.PENDING, grantedAt: { $ne: null } },
     { status: PAYMENT_STATUS.VERIFIED, reviewedBy, reviewedAt: now, reviewNote: note },
-    { new: true },
+    { returnDocument: 'after' },
   );
 };
 
@@ -388,7 +393,7 @@ paymentSchema.statics.claimReject = async function claimReject({
   return this.findOneAndUpdate(
     { _id: paymentId, status: PAYMENT_STATUS.PENDING, grantedAt: null },
     { status: PAYMENT_STATUS.REJECTED, reviewedBy, reviewedAt: now, reviewNote: note },
-    { new: true },
+    { returnDocument: 'after' },
   );
 };
 
@@ -416,7 +421,7 @@ paymentSchema.statics.claimRevoke = async function claimRevoke({
   return this.findOneAndUpdate(
     { _id: paymentId, status: PAYMENT_STATUS.PENDING, grantedAt: { $ne: null } },
     { status: PAYMENT_STATUS.REVOKED, reviewedBy, reviewedAt: now, reviewNote: note },
-    { new: true },
+    { returnDocument: 'after' },
   );
 };
 
@@ -439,6 +444,7 @@ paymentSchema.methods.toPublicJSON = function toPublicJSON() {
     durationDays: this.durationDays,
     amountPkr: this.amountPkr,
     method: this.method,
+    methodLabel: PAYMENT_METHOD_LABELS[this.method] ?? this.method,
     reference: this.reference,
     note: this.note,
     status: this.status,
