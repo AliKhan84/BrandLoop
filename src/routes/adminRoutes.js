@@ -2,8 +2,8 @@
  * Admin routes — everything behind the admin role.
  *
  * RESPONSIBILITY
- *   Let an administrator create coupons, switch them off, and (Phase 4) read
- *   the feedback users send.
+ *   Let an administrator create coupons, switch them off, read the feedback users
+ *   send, and settle the payment claims customers submit.
  *
  * WHY THIS IS A SEPARATE ROUTER WITH `requireAdmin` ON THE ROUTER
  *   Every route here is administrative, so unlike `authRoutes` there is no
@@ -11,8 +11,9 @@
  *   cannot be forgotten for a route added later. `requireAdmin` must follow
  *   `requireAuth`, which is what puts the freshly-read user on the request.
  *
- * DOES NOT OWN: what a coupon grants (`services/couponService.js`) or who is an
- * admin (the `User` document, set by hand with `npm run make-admin`).
+ * DOES NOT OWN: what a coupon grants (`services/couponService.js`), what settling
+ * a payment writes (`services/paymentService.js`), or who is an admin (the `User`
+ * document, set by hand with `npm run make-admin`).
  */
 
 import { Router } from 'express';
@@ -20,10 +21,12 @@ import mongoose from 'mongoose';
 import { z } from 'zod';
 
 import { requireAdmin, requireAuth } from '../middleware/auth.js';
-import { validateBody } from '../middleware/validate.js';
-import { COUPON_KIND } from '../config/constants.js';
+import { validateBody, validateQuery } from '../middleware/validate.js';
+import { COUPON_KIND, PAYMENT_DECISION } from '../config/constants.js';
 import { Feedback, FEEDBACK_STATUS } from '../models/Feedback.js';
 import { createCoupon, listCoupons, setCouponActive } from '../services/couponService.js';
+import { PAYMENT_QUEUE_FILTER, listPayments, reviewPayment } from '../services/paymentService.js';
+import { activeTier } from '../services/quotaService.js';
 
 const router = Router();
 
@@ -89,6 +92,76 @@ router.patch('/coupons/:id', validateBody(updateCouponSchema), async (req, res) 
     isActive: req.body.isActive,
   });
   res.json({ coupon: coupon.toPublicJSON() });
+});
+
+/**
+ * The payment queue's filter.
+ *
+ * Validated against the service's own map rather than a repeated list, so a
+ * filter the route accepts is always one the query understands. The default is
+ * `awaiting` — the rows that still need an operator — because a queue that opens
+ * on settled history is a queue nobody reads.
+ */
+const listPaymentsQuerySchema = z.object({
+  status: z.enum(Object.keys(PAYMENT_QUEUE_FILTER)).optional().default('awaiting'),
+});
+
+/**
+ * A decision on a claim.
+ *
+ * Four values because a claim has two shapes: one that granted a plan can be
+ * confirmed or revoked, one that granted nothing can be verified or rejected.
+ * The service refuses a decision that does not match the claim's state, so this
+ * schema checks the vocabulary and not the fit.
+ */
+const reviewPaymentSchema = z.object({
+  decision: z.enum(Object.values(PAYMENT_DECISION)),
+  note: z.string().trim().max(300).optional().default(''),
+});
+
+/**
+ * GET /api/admin/payments — claims to reconcile, or the settled history.
+ *
+ * @param {import('express').Request} req - Validated query.
+ * @param {import('express').Response} res - Responds 200 with the claims.
+ * @returns {Promise<void>}
+ * @sideeffect none (read-only)
+ */
+router.get('/payments', validateQuery(listPaymentsQuerySchema), async (req, res) => {
+  const payments = await listPayments({ status: req.validatedQuery.status });
+  res.json({ payments: payments.map((payment) => payment.toAdminJSON()) });
+});
+
+/**
+ * PATCH /api/admin/payments/:id — settles a claim.
+ *
+ * The account half of the response is what the operator's toast reports, so
+ * confirming a revocation visibly ends access rather than leaving them to check
+ * the customer's page.
+ *
+ * @param {import('express').Request} req - Validated body.
+ * @param {import('express').Response} res - Responds 200 with the claim and account.
+ * @returns {Promise<void>}
+ * @throws {ApiError} 404 when there is no such claim, 409 when the decision does
+ *   not fit its state.
+ * @sideeffect Writes the claim, and the account for verify or revoke.
+ */
+router.patch('/payments/:id', validateBody(reviewPaymentSchema), async (req, res) => {
+  const { payment, user } = await reviewPayment({
+    paymentId: req.params.id,
+    decision: req.body.decision,
+    reviewedBy: req.user._id,
+    note: req.body.note,
+  });
+
+  res.json({
+    payment: payment.toAdminJSON(),
+    // Null when the decision did not touch the account — a confirm or reject
+    // changes nothing about what the customer can do.
+    account: user
+      ? { plan: activeTier(user), planExpiresAt: user.planExpiresAt }
+      : null,
+  });
 });
 
 /** Feedback update payload. */
