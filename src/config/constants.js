@@ -300,6 +300,26 @@ export const PAYMENT_SOURCE = Object.freeze({
 });
 
 /**
+ * The four things an operator can decide about a claim.
+ *
+ * Two pairs, because a claim has two shapes and the decision has to match it. A
+ * claim that granted a plan can be confirmed or revoked; one that granted
+ * nothing can be verified or rejected. `verify` and `confirm` both end at
+ * `verified`, which is why the decisions cannot simply be the statuses — one of
+ * them grants, the other only records what already happened.
+ */
+export const PAYMENT_DECISION = Object.freeze({
+  /** Grant now. Only valid while nothing has been granted. */
+  VERIFY: 'verify',
+  /** No money found, nothing was granted. The claim closes. */
+  REJECT: 'reject',
+  /** The money was found. Nothing changes for the customer. */
+  CONFIRM: 'confirm',
+  /** No money found after a grant — take the plan back. */
+  REVOKE: 'revoke',
+});
+
+/**
  * The plan catalog.
  *
  * ## Why the free tier reads env
@@ -532,6 +552,7 @@ export default {
   PAYMENT_METHOD,
   PAYMENT_METHOD_LABELS,
   PAYMENT_SOURCE,
+  PAYMENT_DECISION,
   PAYMENT_REVIEW_HOURS,
   TIER_RANK,
   PURCHASABLE_TIERS,

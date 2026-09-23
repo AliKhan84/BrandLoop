@@ -252,6 +252,8 @@ paymentSchema.index({ status: 1, grantedAt: 1, createdAt: -1 });
  * @param {string} params.previousPlan - The tier before the grant.
  * @param {Date|null} [params.previousPlanExpiresAt] - The expiry before the grant.
  * @param {boolean} [params.autoVerified] - Whether a human had looked first.
+ * @param {import('mongoose').Types.ObjectId|string|null} [params.reviewedBy] - The
+ *   operator, when a human made the grant. Null on the instant path.
  * @param {Date} [params.now] - Reference time.
  * @returns {Promise<object|null>} The updated claim, or null when it was already
  *   granted (or is no longer pending).
@@ -264,6 +266,7 @@ paymentSchema.statics.claimGrant = async function claimGrant({
   previousPlan = null,
   previousPlanExpiresAt = null,
   autoVerified = false,
+  reviewedBy = null,
   now = new Date(),
 }) {
   return this.findOneAndUpdate(
@@ -275,7 +278,34 @@ paymentSchema.statics.claimGrant = async function claimGrant({
       previousPlan,
       previousPlanExpiresAt,
       autoVerified,
+      // A grant with no operator was made by the system, and saying a human
+      // approved it would be the one lie this record must never tell.
+      reviewedBy,
+      reviewedAt: reviewedBy ? now : null,
     },
+    { new: true },
+  );
+};
+
+/**
+ * Atomically puts a settled claim back into the queue.
+ *
+ * The compensation for a revoke whose account write failed. Without it the row
+ * would read as revoked while the plan is still live — the customer keeps access
+ * while the books say they do not, which is the direction that hides.
+ *
+ * Only valid from `revoked`, the one settled state reached by changing the
+ * account: there is nothing to undo for the others.
+ *
+ * @param {object} params
+ * @param {import('mongoose').Types.ObjectId|string} params.paymentId - The claim.
+ * @returns {Promise<object|null>} The released claim, or null if it had moved on.
+ * @sideeffect Writes to the database.
+ */
+paymentSchema.statics.releaseReview = async function releaseReview({ paymentId }) {
+  return this.findOneAndUpdate(
+    { _id: paymentId, status: PAYMENT_STATUS.REVOKED },
+    { status: PAYMENT_STATUS.PENDING, reviewedBy: null, reviewedAt: null, reviewNote: '' },
     { new: true },
   );
 };
