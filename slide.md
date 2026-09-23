@@ -189,18 +189,20 @@ Bullets:
 - Ops: structured logger with secret redaction, graceful shutdown, health
   endpoint, and an error taxonomy of 503 for an outage, 401 for a dead session,
   500 only for a real defect
-- 150 automated tests with the built-in node:test runner
+- 298 automated tests with the built-in node:test runner
 Layout: two columns if needed; keep the error taxonomy as one bullet.
 
 SLIDE 7 — Remaining work
 Title: Remaining work
 Subtitle: What is deliberately not built yet
 Bullets:
-- Payments: the plans page exists (Free, Creator $5, Pro $10) but is UI only.
-  No checkout, no plan stored on the account, and the API still enforces
-  free-tier quotas for everyone
-- Next for payments: a payment provider, a plan field on the user, and quotas
-  read from the plan
+- Payments are local, not card: bank transfer, Raast, JazzCash or Easypaisa, in
+  PKR (Creator 1,500, Pro 3,000, 30 days). The plan activates the moment the
+  customer submits the transaction reference — nobody waits for a human — and the
+  operator confirms or revokes it against their own statement, one tap in Discord
+- Next for payments: a processor, which needs a merchant account. The seam is
+  already there — a Payment row's source and providerRef, with one function that
+  writes a tier
 - Short video: model-generated clips to accompany posts
 - LinkedIn Community Management API: would replace the copy-and-open page with
   true publishing

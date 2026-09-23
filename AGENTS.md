@@ -81,16 +81,27 @@ five bugs found only by running the thing end to end.
 - Slot editing (angle + planned/news) before generation.
 - Draft editing from the dashboard, sharing one service with the Discord modal.
 - Discord linking with polling.
-- `/billing` — the plans page (Free / Creator / Pro). **No checkout:** no card,
-  no payment provider, and the buttons stay disabled. A tier is real though —
-  every signup gets 30 days of Pro, a coupon can grant Pro or unlimited usage,
-  and the numbers on the cards are read from `/api/billing` rather than kept as
-  literals here, so a card cannot advertise a ceiling the API does not enforce.
-- `/feedback` and `/admin/coupons`, `/admin/feedback` — the feedback form and the
-  two admin pages. The admin pages are guarded three deep: `proxy.ts` wants a
-  cookie, the page calls `notFound()` for a non-admin, and the API returns 403
-  regardless. `/api/admin/*` is the only router with `requireAdmin` on the router
-  itself.
+- `/billing` — the plans page (Free / Creator / Pro), and `/billing/pay` — the
+  local checkout. **There is still no card path and no payment provider**, and
+  that is now a deliberate choice rather than a deferral: a Pakistani gateway
+  means a merchant account (company registration, NTN, a signed contract), which
+  is a business process, not a commit. So the customer pays by bank transfer,
+  Raast, JazzCash or Easypaisa, states the transaction reference, and **the plan
+  activates on submit** — `PAYMENT_AUTO_VERIFY` defaults on, because a customer
+  who has paid and is told to wait for a human is a customer who has left. The
+  operator then reconciles the claim against their own statement and confirms or
+  revokes it (one tap in a Discord DM, or from `/admin/payments`). A revoke
+  restores the account's previous plan and expiry, which is why the grant records
+  what it replaced — see gotcha 6.14. A tier is real anyway: every signup gets 30
+  days of Pro, a coupon can grant Pro or unlimited usage, and the price, term and
+  limits on the cards are all read from `/api/billing` rather than kept as
+  literals here, so a card cannot advertise a ceiling or a price the API does not
+  enforce.
+- `/feedback` and `/admin/coupons`, `/admin/feedback`, `/admin/payments` — the
+  feedback form and the three admin pages. The admin pages are guarded three deep:
+  `proxy.ts` wants a cookie, the page calls `notFound()` for a non-admin, and the
+  API returns 403 regardless. `/api/admin/*` is the only router with
+  `requireAdmin` on the router itself.
 - Brand: `public/BrandLoop-logo.png`. The file is RGB with **no alpha channel**
   and has the wordmark inside it, so it is drawn as a rounded tile
   (`components/brand-logo.tsx`) beside a real text label. Do not drop the raw
@@ -107,6 +118,29 @@ five bugs found only by running the thing end to end.
   with a Download fallback. The bytes come from the dashboard's own route
   `GET /api/posts/[postId]/image`, because the browser cannot *read* the API's
   `/media` URL — no CORS, and a canvas drawn from it is tainted.
+
+**Local payments** — added after the dashboard, when the owner asked for a way to
+actually take money in Pakistan.
+
+- `src/models/Payment.js` is one claim: who paid, what it bought, the reference
+  the customer typed, and the single decision on it. Every transition is one
+  `findOneAndUpdate` with its precondition **in the query**, because two admins,
+  or one admin in Discord and the dashboard, will act on the same row at once.
+- `src/services/grantService.js` was extracted so a purchase and a coupon cannot
+  drift: `computeCouponGrant` moved there untouched, `computeTierGrant` and
+  `restorePreviousGrant` joined it, and `couponService` re-exports the old name so
+  nothing that used it changed.
+- Grants **extend, never replace**: a renewal adds to the end of the period, and
+  so does an upgrade — the days already paid for are not thrown away. A
+  **downgrade is refused** (`purchasability`), because the account holds one plan
+  with one expiry and selling a cheaper tier would silently delete paid-for time.
+- The instant path is bounded on purpose: one unreconciled claim per user, a
+  price ceiling (`PAYMENT_AUTO_VERIFY_MAX_PKR`), and a one-tap revoke. Set
+  `PAYMENT_AUTO_VERIFY=false` to put a human in front of every purchase instead.
+- `paymentQueue.js` DMs every admin and is the only button handler in
+  `interactions.js` with a role check — see gotcha 6.13.
+- Notification is best-effort and never fails a purchase; a claim with no admin to
+  DM is logged and waits on `/admin/payments`.
 
 **Hardening done since Phase 1** (each was a real bug found by running it):
 
@@ -175,9 +209,12 @@ Nothing in the planned scope. What follows is deliberately unbuilt, not pending.
 - Phase 2: LinkedIn Community Management API. (Would replace the LinkedIn
   publisher branch and nothing above it — that seam is deliberate.)
 - Phase 4: short video / Veo.
-- Stripe, BullMQ/Redis, browser automation. Browser automation in particular is
-  forbidden: driving a real session to post on the user's behalf breaches
-  LinkedIn's terms and risks **the user's** account.
+- Stripe, BullMQ/Redis, browser automation. Note that local payments are **in** —
+  what is out is a *processor*. The seam for one is already here: a `Payment` row
+  carries `source` and `providerRef`, and `reviewPayment` is the only thing that
+  writes a tier, so a webhook would call exactly that path and skip the human.
+  Browser automation in particular is forbidden: driving a real session to post on
+  the user's behalf breaches LinkedIn's terms and risks **the user's** account.
 
 ---
 
@@ -326,7 +363,30 @@ hand-typed `node -e "import('./src/routes/authRoutes.js')"`, which is now
 `src/services/`. Loading a module does not prove it works; it proves it exists,
 which is the class of mistake `tsc` cannot see in plain JavaScript and a suite
 that never touches the entry points misses entirely. Any new directory of
-modules deserves the same two lines.
+modules deserves the same two lines. It now walks `src/models/` too, because a
+model whose consumers do not exist yet is exactly where that gap is widest.
+
+**6.13 A DM fanned out to several people is not access control.** The draft
+buttons rely on isolation: the approval message goes to one person's DM, so being
+able to press Approve *is* the authorisation, and those handlers never compare
+`interaction.user.id`. Copying that pattern for the payment notice — which is
+sent to **every** admin — would have let any of them grant a plan, and would have
+kept letting them after a demotion. `handlePaymentDecision` therefore re-reads the
+actor from the database and requires the admin role, the same way `requireAdmin`
+does for HTTP. Before fanning any message out to more than one person, add the
+check that the single-recipient case made unnecessary.
+
+**6.14 Granting access before the money is confirmed is only safe if the grant
+records what it replaced.** `PAYMENT_AUTO_VERIFY` activates a plan on submit, which
+puts a customer's access ahead of the operator's attention — the thing that makes
+local manual payment tolerable. It is only reversible because
+`previousPlan`/`previousPlanExpiresAt` are snapshotted **before** the plan is
+moved, so a revoke restores exactly what the account had rather than dropping a
+paying customer to Free. Two rules follow, and both are tested: the snapshot is
+written in the same update as the grant, and `restorePreviousGrant` **refuses** to
+use it once the account's expiry no longer matches what that grant wrote (a newer
+purchase has landed, and restoring the old value would silently delete days the
+user paid for). Any future "activate now, verify later" flow needs both halves.
 
 ---
 
@@ -335,7 +395,7 @@ modules deserves the same two lines.
 ```bash
 # root — API on 8080
 npm start            # or: npm run dev (nodemon)
-npm test             # node --test, 246 tests
+npm test             # node --test, 298 tests
 npm run probe        # validates the AI models and every credential
                      # `npm run probe -- --images` also generates one for real
 npm run seed         # demo account: demo@brandloop.local / demo-password-123
@@ -362,8 +422,17 @@ the full `node:22-bookworm` image rather than `-slim` on purpose: it carries the
 compiler bcrypt may need, so no build ever reaches for a Debian mirror.
 
 **Before calling anything done:** `npm test`, `tsc --noEmit`, `eslint .`, and a
-console sweep of `/workspace`, `/drafts`, `/settings` — all currently clean, and
-regressions there are the thing most likely to slip through.
+console sweep of `/workspace`, `/drafts`, `/settings`, `/billing` and
+`/billing/pay` — all currently clean, and regressions there are the thing most
+likely to slip through.
+
+**Payments are off until an account is configured.** `PAYMENTS_ENABLED` is
+*derived*: with no `PAYMENT_BANK_ACCOUNT_NUMBER`, `PAYMENT_JAZZCASH_NUMBER` or
+`PAYMENT_EASYPAISA_NUMBER` in `.env`, there is no way to pay, the billing page
+keeps its "not set up" state, and `POST /api/payments` answers 400 — a deployment
+cannot offer a checkout it has nowhere to receive. `npm run seed` creates the demo
+account but sets no payment details, so a local run of the purchase flow needs
+those three lines filled in.
 
 **Operational scripts** (they take `--email` deliberately, so fixture rows from
 test runs can never be sent to a real account):
@@ -418,6 +487,20 @@ in any log of ours.
 
 Model names live in env, never hardcoded in `src/` — the catalog moves fast and
 `npm run probe` is the single place that validates them.
+
+The payment block in `.env.example` is the same rule applied to money: the account
+numbers, the PKR prices, the term and `PAYMENT_AUTO_VERIFY` all live there, because
+each is the operator's decision rather than a property of the code. `README.md`
+documents the flow for whoever is running it; nothing about it belongs in a
+literal.
+
+**Decided, worth knowing:** auto-verification of a transfer is impossible without
+a processor, and a Pakistani processor means a merchant account. The honest
+options were a human in front of every purchase — which loses the customer — or
+granting on submit and reconciling after, which is what this does. A future
+gateway webhook would write the same `Payment` row and call `reviewPayment`, and
+the reconcile step would then be bookkeeping rather than a race with the
+customer's patience.
 
 ---
 

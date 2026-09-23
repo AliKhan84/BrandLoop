@@ -38,7 +38,7 @@ LinkedIn's Community Management API application is in progress in parallel and n
 | Short images | `gpt-image-2` | Sized per platform (square for feed, etc.) |
 | Short video (later phase) | **Not Sora** — OpenAI's Sora API is being shut down Sep 24, 2026. Use Google Veo (Gemini API) when you get to this phase | Don't build against a dying API |
 | Scheduling | BullMQ + Redis (or node-cron for simplicity) | Daily post-generation job, per user, per plan |
-| Payments | Stripe (test mode for demo) | Needed for real launch given per-post X costs, optional for the academic deliverable |
+| Payments | Stripe (test mode for demo) — **amended:** local manual payment instead (bank transfer / Raast, JazzCash, Easypaisa) with the operator confirming against their own statement. No processor, so no merchant account. See IMPLEMENTATION-PLAN §0.7 | Needed for real launch given per-post X costs, optional for the academic deliverable |
 | Hosting | University server | PM2 + Nginx + Certbot, same as before |
 
 ## 4. Architecture

@@ -128,11 +128,15 @@ a bearer JWT. Public routes are `/health`, `/api/auth/register`,
 | `DELETE` | `/api/plans/:id` | Delete a plan |
 | `GET` | `/api/posts` | Drafts and published posts |
 | `GET` | `/api/posts/:id` | One post |
-| `GET` | `/api/billing` | The plan catalog plus this account's tier and grants |
+| `GET` | `/api/billing` | The plan catalog — price, term and limits — plus this account's tier and grants |
+| `GET` | `/api/payments` | Where to send money, what a plan costs, and this account's claims |
+| `POST` | `/api/payments` | Record a payment claim; the plan activates on submit by default |
 | `POST` | `/api/coupons/redeem` | Apply a coupon code to your account |
 | `POST` | `/api/feedback` | Send feedback (rate limited per account) |
 | `GET`/`POST` | `/api/admin/coupons` | Admin only: list and create coupon codes |
 | `PATCH` | `/api/admin/coupons/:id` | Admin only: enable or disable a code |
+| `GET` | `/api/admin/payments` | Admin only: the reconciliation queue (`?status=awaiting`) |
+| `PATCH` | `/api/admin/payments/:id` | Admin only: verify, reject, confirm or revoke a claim |
 | `GET` | `/api/admin/feedback` | Admin only: the feedback inbox |
 | `PATCH` | `/api/admin/feedback/:id` | Admin only: mark a message read, archived or new |
 | `PATCH` | `/api/posts/:id` | Edit a post's text (the dashboard's editor) |
@@ -149,11 +153,11 @@ src/
   db/            MongoDB connection
   jobs/          The daily schedule and the job it runs
   middleware/    Auth guard, request validation, error mapping
-  models/        User, ContentPlan, Post, Usage, GenerationLog
+  models/        User, ContentPlan, Post, Usage, GenerationLog, Coupon, Feedback, Payment
   routes/        The HTTP surface
   services/      The product: ai/ (plan, post, image), news/, discord/, publishing/, quotas
   utils/         Platform limits, URL building, logging, errors
-tests/           Seven files, 156 tests — no database connection and no network
+tests/           Fourteen files, 298 tests — no database connection and no network
                  call, though a .env must exist because config/env.js validates
                  on import
 ```
@@ -171,13 +175,49 @@ tests/           Seven files, 156 tests — no database connection and no networ
 ## Status
 
 Working end to end: auth, plan generation, news sourcing, post and image
-generation, Discord approval, assisted publishing, quotas, the scheduler, and the
-dashboard.
+generation, Discord approval, assisted publishing, quotas, the scheduler, the
+dashboard, and local payment.
 
-Deliberately not built: LinkedIn's Community Management API, video, and payments
-(the plans page is UI only — nothing is charged and no plan is stored on the
-user). Any of those three would replace a seam that already exists; none is
-half-started.
+Deliberately not built: LinkedIn's Community Management API, video, and any card
+processor. The last one is a decision rather than a deferral — a Pakistani gateway
+means a merchant account, which is a business process — so payment is local and
+manual instead, and the seam for a processor is the `Payment` row a webhook would
+write. None of these is half-started.
+
+## Getting paid
+
+Payment is off until you give it somewhere to receive. Put your own account
+details in `.env` and the billing page turns into a working checkout:
+
+```bash
+PAYMENT_BANK_NAME=Meezan Bank
+PAYMENT_BANK_ACCOUNT_NAME=Your Name
+PAYMENT_BANK_ACCOUNT_NUMBER=PK00ABCD0123456789012345   # or an account number
+PAYMENT_JAZZCASH_NUMBER=03001234567                    # either wallet is optional
+PAYMENT_EASYPAISA_NUMBER=03451234567
+PAYMENT_CONTACT=you@example.com                        # where receipts go
+```
+
+What happens then, in order:
+
+1. The customer picks a plan and lands on `/billing/pay`, which shows those
+   accounts and takes the transaction reference. Prices come from
+   `PRICE_CREATOR_PKR` and `PRICE_PRO_PKR` (defaults Rs 1,500 and Rs 3,000 for 30
+   days).
+2. **The plan activates as they submit it.** Nobody waits for you — that is the
+   whole point of `PAYMENT_AUTO_VERIFY=true`. Set it to `false` if you would
+   rather nothing activates until you have seen the money; the same queue then
+   reads verify/reject instead of confirm/revoke.
+3. You get a Discord DM for every claim, with **Confirm** and **Revoke** buttons.
+   Check the reference against your own statement, then tap one — or settle it
+   from `/admin/payments`, which also lists the history.
+4. A revoke puts the account back exactly where it was, so a claim that turns out
+   to be someone else's money does not cost the customer the plan they already
+   had.
+
+One claim per customer is open at a time, which bounds what a single account can
+get without you looking, and a claim above `PAYMENT_AUTO_VERIFY_MAX_PKR` always
+waits for you.
 
 Built by Ali Khan as an Applied AI & ML course project.
 

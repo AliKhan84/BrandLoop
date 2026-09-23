@@ -60,8 +60,10 @@ in this repository rather than a warning to live with.
 | `/workspace` | The main screen: plan rail, per-slot Generate, drafts, and an explanation of the workflow |
 | `/drafts` | Every draft and published post, with the editor |
 | `/settings` | Profile and the Discord linking panel |
-| `/billing` | The plans page — still **no checkout**, but a tier is real now: every signup gets a Pro trial, a coupon code can grant Pro or unlimited usage, and the numbers on each card are read from the API that enforces them rather than kept as literals here |
+| `/billing` | The plans page — prices in PKR, read from the API that enforces them rather than kept as literals here. Every signup gets a Pro trial and a coupon code can grant Pro or unlimited usage |
+| `/billing/pay` | The local checkout: the accounts to send money to, a form taking the transaction reference, and this account's own claim history. The plan activates on submit; the "waiting" states shown are about our bookkeeping, never about the customer's access |
 | `/admin/coupons` | Admin only: create codes, see who used them, switch them off. Non-admins get a 404 from the page and a 403 from the API |
+| `/admin/payments` | Admin only: reconcile submitted claims — granted ones first, since those are plans already active that nobody has checked against the statement |
 | `/compose/[postId]` | The LinkedIn copy-and-open page: copies the text *and the image*, then opens LinkedIn |
 | `/api/posts/[postId]/image` | A route handler that proxies image bytes. The browser cannot read the API's `/media` URL — no CORS, and a canvas drawn from it is tainted — so the bytes are fetched server-side and handed over as a same-origin response |
 

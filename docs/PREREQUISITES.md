@@ -221,6 +221,21 @@ JWT_SECRET=...
 # SMTP_PORT=587
 # SMTP_USER=you@gmail.com
 # SMTP_PASS=abcd efgh ijkl mnop     # App Password, not the account password
+
+# ── Payments (optional — local, manually reconciled) ────────
+# Not credentials: your own receiving accounts. Nothing is charged until at
+# least one of the three numbers exists, so leaving this block out is a
+# supported state (the plans page keeps its "not set up" message).
+# See README.md § Getting paid.
+# PAYMENT_BANK_NAME=Meezan Bank
+# PAYMENT_BANK_ACCOUNT_NAME=Your Name
+# PAYMENT_BANK_ACCOUNT_NUMBER=PK00ABCD0123456789012345
+# PAYMENT_JAZZCASH_NUMBER=03001234567
+# PAYMENT_EASYPAISA_NUMBER=03451234567
+# PAYMENT_CONTACT=you@example.com
+# PRICE_CREATOR_PKR=1500
+# PRICE_PRO_PKR=3000
+# PAYMENT_AUTO_VERIFY=true          # false = nothing activates until you verify
 ```
 
 The agent writes `.env.example` with all of these documented in Step 0.3. It also keeps a fallback that reads the legacy lowercase `openai_api_key`, so nothing breaks mid-migration.

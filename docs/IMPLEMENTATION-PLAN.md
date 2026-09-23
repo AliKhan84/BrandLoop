@@ -171,6 +171,52 @@ instead, and LinkedIn takes it on paste. Two consequences worth knowing:
 
 ---
 
+### 0.7 AMENDMENT — LOCAL PAYMENT, AND WHY THERE IS NO GATEWAY
+
+The PRD's technology table (§3) named **Stripe in test mode**, and §585 listed Stripe as out
+of scope. Both are now superseded: payment was built locally and manually, because the
+owner's requirement was a way to actually take money in Pakistan, and a Pakistani gateway
+means a merchant account — company registration, NTN, a signed contract — which is a business
+process rather than a commit. Safepay, PayFast, JazzCash/Easypaisa merchant and Paymob all
+want that paperwork before they issue keys.
+
+**What auto-verification would take.** There is no code-only way to know a transfer arrived:
+either a processor webhook, or trusting the customer's own claim, or driving a real banking
+session (browser automation — forbidden, and a terms-of-service breach that risks the
+account). So the decision was not "manual or automatic" but "manual, or a business process
+first". The nearest thing without a merchant account is parsing the bank's own credit-alert
+emails over IMAP and matching amount against reference — per-bank email parsing on top of a
+course project, so it was not built.
+
+**What shipped instead,** and the reasoning behind each part:
+
+| # | Decision | Why |
+|---|---|---|
+| L1 | The plan activates **on submit** (`PAYMENT_AUTO_VERIFY=true`), and the operator reconciles afterwards | A customer who has paid and is told to wait for a human is a customer who has left. The human step moved behind them rather than in front of them |
+| L2 | Every grant records `previousPlan`/`previousPlanExpiresAt` **before** the plan moves | Granting before the money is confirmed is only safe if it is reversible. A revoke restores exactly what the account had — verified live: Pro until the 23rd, a renewal extending to the 22nd of the next month, a revoke returning it to the 23rd |
+| L3 | A revoke is **refused** once a newer grant has moved the account | The snapshot is then stale, and writing it back would delete days the user bought afterwards. Refusing with a readable message beats a silent subtraction |
+| L4 | One unreconciled claim per user, and only `creator`/`pro` are sold | Bounds what one account can take without a human looking. A downgrade is refused because the account holds one plan with one expiry — selling it would silently delete paid-for time |
+| L5 | The admin's decisions are **confirm/revoke**, not verify/reject, when a plan is already active | They are different acts: one records that the money was found, the other takes access back. Offering "verify" on a live plan presents a control that can only fail |
+| L6 | `PAYMENT_AUTO_VERIFY=false` restores approve-first | The strict shape is the right one the day claims are abused, and it costs one env flag rather than a rewrite |
+| L7 | The `Payment` row carries `source` and `providerRef` and nothing uses them | The seam for a processor: its webhook writes the same row and calls `reviewPayment`, which is the only thing that writes a tier |
+
+**Two defects this build produced, both now pinned by tests.** The payment notice is DM'd to
+*every* admin, so unlike the draft buttons — which are protected only by living in one person's
+DM — being able to see it proves nothing about who is pressing; the handler re-reads the actor
+and requires the role (AGENTS.md 6.13). And a revoke had to claim the decision before writing
+the account, with a compensation if that write failed, or a row could read "revoked" while the
+plan was still live (AGENTS.md 6.14).
+
+**Verified end to end on a real database**, with the API on a spare port and **no Discord
+gateway** so the live bot was untouched: claim submitted → Pro active until +30 days in the
+same response; a second claim refused; a renewal extending from the existing expiry rather than
+from today; a downgrade refused; confirming twice refused with the current status named; a
+revoke restoring the exact previous state; and a revoke refused after a newer purchase, leaving
+the paid days intact. The Discord DM falls back to a logged warning when no admin has a linked
+account, and the purchase still succeeds — notification is best-effort by design.
+
+---
+
 ## 0. WHERE THIS PLAN LIVES
 
 This is the version-controlled copy inside the repo. The canonical working copy lives at
@@ -582,7 +628,7 @@ Both return a uniform shape so the Discord message renders identically for each 
 
 **Error handling:** Express 5 propagates async rejections to `errorHandler.js` natively. `ApiError` carries `statusCode`; unknown errors log the stack server-side and return a generic body. Discord errors must never crash the process — wrap all handlers.
 
-**Out of scope (do not build):** PRD Phase 2 (LinkedIn API OAuth + swap of the publisher branch), PRD Phase 4 (Veo video — and never Sora, retired Sep 2026), Stripe, the Next.js dashboard, BullMQ/Redis, and any browser automation.
+**Out of scope (do not build):** PRD Phase 2 (LinkedIn API OAuth + swap of the publisher branch), PRD Phase 4 (Veo video — and never Sora, retired Sep 2026), a card processor, the Next.js dashboard as originally scoped (built anyway — see §0.3), BullMQ/Redis, and any browser automation. **Local payment is in** (§0.7) — what is out is a *processor*, whose seam already exists on the `Payment` row.
 
 ---
 
