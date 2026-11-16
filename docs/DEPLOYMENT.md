@@ -42,7 +42,7 @@ hosts out is the sleeping, never the size.
 |---|---|---|---|---|
 | **University server** (PRD §8) | Yes — the machine already exists | Yes | Yes | **The plan already.** Free, always-on, and it already runs Nginx + PM2 + Certbot. Best path; see §5. |
 | **Oracle Cloud Always Free** | Yes, permanently | Yes | Yes | **The best genuinely free VM.** Ampere A1 was *halved* on 15 June 2026 — 4 OCPU / 24 GB became **2 OCPU / 12 GB** — but it is still always-free, alongside a small AMD micro instance and block storage. Signup is the friction: card verification and, anecdotally, rejected applications. |
-| **Google Cloud Always Free** | Yes, permanently | Yes | Yes | One **e2-micro in `us-west1`, `us-east1` or `us-central1`** plus 30 GB of standard disk. 1 GB of RAM against a measured 133 MB is fine for both containers. Region-locked and US-only, which is a latency question rather than a correctness one. |
+| **Google Cloud Always Free** | Yes, permanently | Yes | Yes | One **e2-micro in `us-west1`, `us-east1` or `us-central1`** plus 30 GB of standard disk. 1 GB of RAM against a measured 133 MB is fine for both containers. Region-locked and US-only, which is a latency question rather than a correctness one. Runbook: §7. |
 | **Render (free plan)** | Yes | **No** — sleeps after 15 idle minutes, ~1 min to wake | No — ephemeral filesystem | Good for the **dashboard**, which can sleep. For the API it breaks both the gateway and the schedule. Keeping it awake with a ping works and is widely done, but 24/7 pinging consumes ~744 of the **750 instance hours** a workspace gets per month, leaving no headroom. Treat as fragile. |
 | **Vercel (Hobby)** | Yes | n/a — serverless | No | **Dashboard only.** Hosting it here works well (it is a Next.js app, and `lib/api.ts` is server-only, so the API base URL stays server-side). The terms are personal/non-commercial, which a university project is; the API and bot cannot run here at all. |
 | **Home machine + Cloudflare Tunnel** | Yes | Yes, while it is on | Yes | The tunnel gives a public HTTPS hostname with no open ports and no static IP. Costs nothing but your own power and uptime. |
@@ -73,10 +73,19 @@ Set `PUBLIC_BASE_URL` and `DASHBOARD_BASE_URL` to the public hostname. Add the
 VM's IP to Atlas Network Access — and while you are there, drop the
 `0.0.0.0/0` dev shortcut from PREREQUISITES §3.3.
 
+**§7 is this on GCP, step by step, and it is the combination this project
+deploys as** — both containers on the one VM, chosen over C for the reasons
+recorded at the top of §7. One deviation: it `pull`s the published images rather
+than building them, because a Next.js production build wants more memory than a
+1 GB instance has.
+
 **C. Split: dashboard on Vercel Hobby, API on a small always-on host.**
 Only worth it if you want a managed dashboard. The dashboard needs
 `API_BASE_URL` pointed at the API's public URL, and the API needs
 `DASHBOARD_BASE_URL` pointed back, so both must be reachable from the internet.
+This works — the dashboard is a backend-for-frontend, so the browser never calls
+the API and no CORS is involved — but it is not the path taken here; §7's
+opening note records what it costs.
 
 ---
 
@@ -270,3 +279,214 @@ purpose; see §4.
 **A generated image 404s after a redeploy.** The container was replaced without
 a volume. Compose defines one (`media`), so this means something ran without it
 — check that the volume is still listed by `docker volume ls`.
+
+---
+
+## 7. GCP e2-micro, step by step
+
+Combination B of §3, executed: **both containers on one Always Free VM**, with
+Nginx and Certbot (§5) in front of them. Written to be followed top to bottom on
+a fresh project. The steps that are easy to get wrong — the disk type, and which
+ports the firewall opens — carry their reason inline.
+
+**Why both containers on one VM, and not the split in C.** The dashboard is 48 MB
+against the API's 85 MB, on a machine whose free tier gives 1 GB, so a second
+container is not what makes the instance small — the sleeping is what rules hosts
+out (§1), and neither container sleeps here. What the split costs instead is
+three settings that must agree character for character: `API_BASE_URL`
+(dashboard → this VM), `DASHBOARD_BASE_URL` (this VM → dashboard, because the
+LinkedIn link *and* the Google redirect URI are built from it), and that same
+redirect URI registered in the Google console. It also puts a serverless
+function's duration cap underneath a Generate call that legitimately takes 30-60
+seconds. The split genuinely works — the dashboard is a backend-for-frontend, so
+the browser never calls the API and there is no CORS to arrange — but what it
+buys is a managed dashboard, which is not a thing this deployment needs.
+
+### 7.1 The instance
+
+```bash
+# One project, one region. The free e2-micro exists in these three regions only.
+gcloud config set project <project-id>
+gcloud config set compute/region us-central1
+
+# A static address, so DNS (7.3) and the Atlas allowlist (7.2) are written once.
+# Attached to a running instance it is free; left behind after you delete the VM
+# it is billed, so release it in that case.
+gcloud compute addresses create brandloop-ip --region=us-central1
+gcloud compute addresses describe brandloop-ip --region=us-central1 \
+  --format='get(address)'
+
+# e2-micro is the free machine shape. `pd-standard` at 30 GB is the free disk —
+# `pd-balanced`, or any larger size, bills from the first byte.
+gcloud compute instances create brandloop \
+  --machine-type=e2-micro \
+  --zone=us-central1-a \
+  --image-family=debian-12 --image-project=debian-cloud \
+  --boot-disk-size=30GB --boot-disk-type=pd-standard \
+  --address=brandloop-ip \
+  --tags=http-server,https-server
+```
+
+Those two tags are what the default network's own `default-allow-http` and
+`default-allow-https` rules match, so 80 and 443 are reachable as soon as the
+instance is. **Do not open 8080 or 3000.** Compose publishes both on the host,
+and the firewall is the only thing keeping them off the internet — Nginx reaches
+them over `127.0.0.1`. If the project has no such rules:
+
+```bash
+gcloud compute firewall-rules create allow-web \
+  --allow=tcp:80,tcp:443 --target-tags=http-server,https-server
+```
+
+Then `gcloud compute ssh brandloop --zone=us-central1-a`.
+
+### 7.2 Atlas, before the first boot
+
+Add the address from 7.1 to Atlas → Network Access, and while you are there drop
+the `0.0.0.0/0` development shortcut from PREREQUISITES §3.3. Doing it now means
+the first boot is clean; skipping it produces `MongoServerSelectionError`, which
+reads like a wrong password and is not.
+
+### 7.3 DNS
+
+Two A records pointing at that address — `api.example.com` and
+`app.example.com`. Certificate issuance in 7.7 fails until both resolve, so
+`dig +short` them before moving on.
+
+### 7.4 Docker
+
+A cloud image is minimal, so this starts with the packages it lacks:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y git curl ca-certificates
+curl -fsSL https://get.docker.com | sudo sh
+sudo usermod -aG docker "$USER" && newgrp docker
+sudo systemctl enable --now docker   # a reboot must bring the bot back
+```
+
+1 GB of RAM is enough for the measured 133 MB, so swap is optional — but an OOM
+kill takes the Discord gateway and the scheduler down together and reports it
+nowhere, which is the silent failure §1 is about. Cheap insurance:
+
+```bash
+sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile
+sudo mkswap /swapfile && sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+```
+
+### 7.5 The repo, and the one file that matters
+
+```bash
+git clone <repo-url> ~/brandloop && cd ~/brandloop
+cp .env.example .env
+```
+
+Fill the five REQUIRED values, then these three for a host with two public names:
+
+| Key | Value on this deployment | What it decides |
+|---|---|---|
+| `PUBLIC_BASE_URL` | `https://api.example.com` | Every generated-image link in a Discord DM |
+| `DASHBOARD_BASE_URL` | `https://app.example.com` | The LinkedIn copy-and-open link, and the Google redirect URI both containers build |
+| `GOOGLE_REDIRECT_URI` | `https://app.example.com/api/auth/google/callback` | What the API sends to Google; must match the console entry character for character |
+
+Fill in `GOOGLE_CLIENT_ID` at the same time even though the API is what exchanges
+the code: the dashboard is what builds the authorize URL, and compose passes the
+client ID to that container too. The client *secret* is never passed to it.
+
+Two things that bite. Write `.env` with **LF** endings — a CRLF file smuggles a
+`\r` into the value Docker reads (§6). And `NEXT_PUBLIC_DISCORD_INSTALL_URL` in
+this file does nothing to a *pulled* image: Next inlines it at build time, so the
+button's href is whatever the GitHub Actions variable held when the image was
+published (§4). Change it there and republish; the `.env` copy is for local
+builds.
+
+Payments stay off until an account number is set, by design: a deployment cannot
+offer a checkout it has nowhere to receive.
+
+### 7.6 Start it
+
+```bash
+# Only while the GHCR packages are private: a PAT with read:packages.
+# echo "$GHCR_PAT" | docker login ghcr.io -u <github-user> --password-stdin
+docker compose pull
+docker compose up -d --wait
+docker compose ps          # both must report healthy
+```
+
+`pull` rather than `--build`, and that is the reason the images are published at
+all: they are `linux/amd64`, which is what an e2-micro is, and a Next.js
+production build wants more memory than this machine has (§4). `--wait` blocks
+until the healthchecks pass instead of returning the moment the containers start.
+
+### 7.7 TLS and the reverse proxy
+
+```bash
+sudo apt-get install -y nginx certbot python3-certbot-nginx
+```
+
+Write the two server blocks from §5 into `/etc/nginx/sites-available/brandloop`,
+with `listen 80;` where §5 has `listen 443 ssl;` and each `server_name` set to
+your own. Symlink it into `sites-enabled`, then let Certbot rewrite it into the
+§5 shape and install the renewal timer:
+
+```bash
+sudo ln -s /etc/nginx/sites-available/brandloop /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+sudo certbot --nginx -d api.example.com -d app.example.com
+```
+
+To avoid opening 80 and 443 at all, run `cloudflared` on the VM instead: it
+terminates TLS at Cloudflare and proxies the same two local ports, so it needs no
+certificate and no inbound rule beyond SSH.
+
+### 7.8 Verify, in this order
+
+```bash
+curl -s https://api.example.com/health
+```
+
+The route reports each dependency separately, which is the whole reason it exists:
+
+```json
+{
+  "status": "ok",
+  "uptimeSeconds": 412,
+  "dependencies": { "database": true, "discord": true, "scheduler": true },
+  "config": { "provider": "gemini", "textModel": "gemini-3.5-flash", "env": "production", "devTools": false }
+}
+```
+
+`database: false` is §7.2. `discord: false` is a bad token. `scheduler: false` is
+the failure §1 exists to warn about: a bot that answers commands and never
+generates anything.
+
+```bash
+docker compose logs -f api                 # gateway ready, Mongo connected, cron armed
+docker compose run --rm api npm run probe  # every credential and model, one command
+```
+
+Then the loop, end to end: sign up at `https://app.example.com`, `/connect` in
+Discord, create and approve a plan, generate one slot — either wait for 09:00 or
+set `NODE_ENV: development` on the `api` service and drive it by hand (§4) —
+approve the DM, and open the LinkedIn compose page. **That page is the check that
+matters**: its image comes through the dashboard's own route, so it is the one
+screen where a missing volume shows up.
+
+**Do not run `npm run seed` on a public host.** The demo password is in the
+repository. If you seed for a demo, delete the account afterwards.
+
+### 7.9 Updating, and the two numbers to watch
+
+```bash
+cd ~/brandloop && git pull && docker compose pull && docker compose up -d
+```
+
+The media volume survives this. A redeploy that loses the images is §6.
+
+- **Egress.** This VM serves every generated image — Discord fetches each one to
+  host its own copy, and the compose page streams it again. On a free-tier
+  project that is the metered line, so it is the number to watch on the billing
+  page.
+- **Ports.** `docker compose ps` showing 8080 and 3000 published is correct and
+  expected; what must stay true is that the firewall never allows them.
