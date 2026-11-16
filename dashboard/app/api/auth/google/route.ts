@@ -30,13 +30,22 @@ import { NextResponse } from 'next/server';
 export function GET(request: Request) {
   const clientId = process.env.GOOGLE_CLIENT_ID;
 
-  // Unconfigured is a missing feature, not a crash: the button that leads here
-  // is hidden when the API is unconfigured, and this covers a direct visit.
+  // Unconfigured is a missing feature, not a crash. The button that leads here
+  // is shown unconditionally (`auth-form.tsx`), so this is the ordinary way a
+  // click ends when this deployment has no client ID: back to the form carrying
+  // a reason, rather than a button that silently is not there. Worth knowing
+  // that the API can be fully configured for Google and this still be missing —
+  // the authorize URL is built here, not there.
   if (!clientId) {
     return NextResponse.redirect(new URL('/login?error=google-not-configured', request.url));
   }
 
-  const base = (process.env.DASHBOARD_BASE_URL ?? new URL(request.url).origin).replace(/\/$/, '');
+  // `||`, not `??`: compose passes this through as an empty string when .env
+  // leaves it unset, and an empty base would build a *relative* redirect_uri,
+  // which Google rejects on its own screen with nothing in our logs. Empty
+  // means "derive it from where I was reached", which is right behind a proxy
+  // and is why this is an override rather than a required setting.
+  const base = (process.env.DASHBOARD_BASE_URL || new URL(request.url).origin).replace(/\/$/, '');
   const state = randomBytes(16).toString('hex');
 
   const authorizeUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');

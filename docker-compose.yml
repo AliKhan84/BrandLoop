@@ -81,6 +81,21 @@ services:
       NODE_ENV: production
       PORT: 3000
       HOSTNAME: 0.0.0.0
+      # Google sign-in is only half the API's: the API holds the secret and does
+      # the code exchange, but *this* container builds the authorize URL and
+      # needs the client ID to do it. Without it here the button still renders —
+      # auth-form.tsx shows it unconditionally — and answers "not set up on this
+      # deployment" while the API is fully configured for it, which reads as
+      # Google's fault rather than a missing variable. A client ID is not a
+      # secret: it travels in the URL the browser visits, and .env already holds
+      # the same value the API uses.
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      # Override for the address the redirect route derives by itself. Empty is
+      # deliberate: the route falls back to the address it was reached at, which
+      # is correct behind any proxy. Set it only when the public name differs
+      # from what the proxy forwards — and set the API's copy to match, because
+      # the API is what sends this exact string to Google.
+      DASHBOARD_BASE_URL: ${DASHBOARD_BASE_URL:-}
     ports:
       - "3000:3000"
     # Not gated on the API's health: the dashboard renders a useful error screen
